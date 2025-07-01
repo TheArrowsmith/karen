@@ -26,7 +26,7 @@ struct ContentView: View {
             ChatView(
                 messages: store.state.chatHistory, // Pass read-only array
                 onSendMessage: { text in
-                    store.dispatch(.sendChatMessage(ChatMessage(text: text, sender: .user)))
+                    store.dispatch(.sendChatMessage(text: text))
                 }
             )
             .frame(minWidth: 400)
@@ -38,11 +38,7 @@ struct ContentView: View {
                 timeBlocks: store.state.timeBlocks, // Pass read-only array
                 tasks: store.state.tasks,
                 onUpdateBlock: { blockId, newStartTime, newDuration in
-                    guard let block = store.state.timeBlocks.first(where: { $0.id == blockId }) else { return }
-                    var updatedBlock = block
-                    updatedBlock.start_time = newStartTime
-                    updatedBlock.actual_duration_in_minutes = newDuration
-                    store.dispatch(.updateTimeBlock(oldValue: block, newValue: updatedBlock))
+                    store.dispatch(.updateTimeBlock(id: blockId, newStartTime: newStartTime, newDuration: newDuration))
                 }
             )
             .frame(width: 320)

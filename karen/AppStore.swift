@@ -19,11 +19,70 @@ class AppStore: ObservableObject {
         self.state = initialState
     }
     
-    // The main entry point for all state changes
-    func dispatch(_ action: AppAction) {
-        // For undoable actions, add to undo stack and clear redo stack
+    // The main entry point now takes an Intent
+    func dispatch(_ intent: AppIntent) {
+        // Translate the Intent into a fully-hydrated Action
+        switch intent {
+        // --- Task Intents ---
+        case .createTask(let task):
+            // For add, the index is usually 0 (prepended)
+            let action = AppAction.addTask(task: task, index: 0)
+            applyAndRecord(action)
+
+        case .deleteTask(let id):
+            guard let index = state.tasks.firstIndex(where: { $0.id == id }) else {
+                triggerInconsistencyAlert(for: "task with ID \(id)")
+                return
+            }
+            let taskToDelete = state.tasks[index]
+            let action = AppAction.deleteTask(task: taskToDelete, index: index)
+            applyAndRecord(action)
+
+        case .toggleTaskCompletion(let id):
+            guard let index = state.tasks.firstIndex(where: { $0.id == id }) else {
+                triggerInconsistencyAlert(for: "task with ID \(id)")
+                return
+            }
+            let oldTask = state.tasks[index]
+            var newTask = oldTask
+            newTask.is_completed.toggle()
+            let action = AppAction.updateTask(oldValue: oldTask, newValue: newTask)
+            applyAndRecord(action)
+            
+        case .updateTask(let id, let updatedTask):
+             guard let oldTask = state.tasks.first(where: { $0.id == id }) else {
+                triggerInconsistencyAlert(for: "task with ID \(id)")
+                return
+            }
+            let action = AppAction.updateTask(oldValue: oldTask, newValue: updatedTask)
+            applyAndRecord(action)
+
+        case .reorderTasks(let from, let to):
+            let action = AppAction.reorderTasks(from: from, to: to)
+            applyAndRecord(action)
+
+        // --- TimeBlock Intents ---
+        case .updateTimeBlock(let id, let newStartTime, let newDuration):
+            guard let oldBlock = state.timeBlocks.first(where: { $0.id == id }) else {
+                triggerInconsistencyAlert(for: "time block with ID \(id)")
+                return
+            }
+            var newBlock = oldBlock
+            newBlock.start_time = newStartTime
+            newBlock.actual_duration_in_minutes = newDuration
+            let action = AppAction.updateTimeBlock(oldValue: oldBlock, newValue: newBlock)
+            applyAndRecord(action)
+
+        // --- Chat Intents ---
+        case .sendChatMessage(let text):
+            // Non-undoable actions are applied directly
+            let message = ChatMessage(text: text, sender: .user)
+            apply(.sendChatMessage(message))
+        }
+    }
+    
+    private func applyAndRecord(_ action: AppAction) {
         if isUndoable(action) {
-            // Before applying, capture the inverse for reordering
             let undoAction = createUndoAction(for: action)
             undoStack.append(undoAction)
             redoStack.removeAll()
@@ -78,13 +137,13 @@ class AppStore: ObservableObject {
         case .sendChatMessage(let message):
             state.chatHistory.append(message)
             let loadingMessage = ChatMessage(text: "", sender: .bot, isLoading: true)
-            self.dispatch(.receiveChatMessage(loadingMessage))
+            apply(.receiveChatMessage(loadingMessage))
             
             // Simulate network delay and chatbot logic
             DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) {
                 self.state.chatHistory.removeAll { $0.isLoading }
                 let response = ChatMessage(text: "I've received your message: '\(message.text)'. My logic is not fully implemented yet.", sender: .bot)
-                self.dispatch(.receiveChatMessage(response))
+                self.apply(.receiveChatMessage(response))
             }
             
         case .receiveChatMessage(let message):

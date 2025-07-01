@@ -8,18 +8,22 @@ Our application currently lacks an undo/redo feature. If a user makes an acciden
 
 ### The Solution
 
-We will implement a global undo/redo system that allows users to reverse and re-apply most data-changing actions. To achieve this, we will refactor the core data management logic of the app from a direct mutation model to an **event-driven architecture**. This means that instead of views directly changing the application's data, they will dispatch "actions" describing the intended change. A central "store" will process these actions, update the data, and maintain a history that we can traverse for undo and redo operations.
+We will implement a global undo/redo system that allows users to reverse and re-apply most data-changing actions. To achieve this, we will build the core data management logic of the app using a robust **event-driven architecture**.
+
+This architecture works in two stages:
+1.  Instead of directly changing data, views will dispatch lightweight **"Intents"** that describe the desired change with minimal information (e.g., "delete the task with this ID").
+2.  A central **"Store"** will receive this intent, look up the current state to gather all necessary details, and translate it into a fully-detailed **"Action"** (e.g., the complete task object and its position). This detailed action is then used to update the state and is recorded in a history that we can traverse for undo and redo operations.
 
 ### Goal
 
-The primary goal is to enhance user experience by providing a reliable and familiar undo/redo capability, making the application more robust and user-friendly.
+The primary goal is to enhance user experience by providing a reliable and familiar undo/redo capability, making the application more robust and user-friendly through a clean, decoupled architecture.
 
 ## 2. Goals
 
 *   Implement an "undo stack" to record and reverse user actions.
 *   Implement a "redo stack" to re-apply actions that have been undone.
 *   Integrate undo/redo with standard macOS menu bar items and keyboard shortcuts (`Cmd+Z`, `Cmd+Shift+Z`).
-*   Refactor the application's data flow to use a central `AppStore` and a system of `AppAction`s.
+*   Implement the application's data flow using a central `AppStore` and a two-layer system of lightweight `AppIntent`s that are translated into detailed, undoable `AppAction`s.
 *   Ensure the user's core data (tasks, schedule) is saved when the app closes and restored on launch.
 
 ## 3. User Stories
@@ -31,100 +35,96 @@ The primary goal is to enhance user experience by providing a reliable and famil
 
 ## 4. Functional Requirements
 
-### Core Architecture Refactor
+### 4.1. Core Architecture Components
 
-1.  **`AppAction` Enum:** Create a new Swift file `karen/AppAction.swift` containing an `enum` named `AppAction`. This enum will define all possible data-modifying operations.
-    *   Examples: `updateTask`, `reorderTasks`, `updateTimeBlock`.
+1.  **`AppIntent` Enum:** Create a Swift file containing an `enum` named `AppIntent`. This enum defines all possible user-initiated commands.
+    *   **Purpose:** To express *intent* from the UI with the *minimum information required*.
+    *   Examples: `deleteTask(id: String)`, `toggleTaskCompletion(id: String)`, `updateTimeBlock(id: String, newStartTime: Date, newDuration: Int)`.
+    *   The UI layer will exclusively dispatch these lightweight intents.
+
+2.  **`AppAction` Enum:** Create a Swift file containing an `enum` named `AppAction`. This enum defines the detailed, hydrated representation of a state mutation.
+    *   **Purpose:** To be the internal, fully-detailed "fact" of what changed. This is what gets recorded on the undo/redo stacks.
     *   For actions that modify existing data (e.g., `updateTask(oldValue: Task, newValue: Task)`), the action case **must** store both the old and new versions of the object. This is critical for the `undo` logic to work.
     *   Chat-related actions (`sendChatMessage`, `receiveChatMessage`, `showChatbotError`) should also be included but marked as non-undoable.
 
-2.  **`AppStore` Class:** Create a new Swift `class` named `AppStore` by renaming the existing `StubBackend.swift` file to `AppStore.swift` and replacing its contents.
+3.  **`AppStore` Class:** Create a Swift `class` named `AppStore`.
     *   This class will be the **single source of truth** for the application's state (`AppState`).
     *   It must be an `@MainActor @ObservableObject` to be used by SwiftUI views.
-    *   It must contain the state as a `@Published private(set) var state: AppState` property to ensure all modifications go through the dispatch method.
+    *   It must contain the state as a `@Published private(set) var state: AppState` property.
     *   The store must be provided via `@EnvironmentObject` from the app's main entry point.
 
-3.  **Action Dispatching:** The `AppStore` must have a `dispatch(_ action: AppAction)` method. This will be the only way to modify the application state.
+### 4.2. Intent Dispatch and Translation
 
-4.  **View Refactoring:** 
-    *   All SwiftUI views (`TaskListView`, `DailyScheduleView`, etc.) must be refactored to call `store.dispatch(...)` instead of directly modifying data.
+4.  **Intent Dispatching:** The `AppStore` must have a public `dispatch(_ intent: AppIntent)` method. This is the only way for views to request a state change.
+
+5.  **Intent-to-Action Translation:** Inside the `dispatch` method, the `AppStore` is responsible for:
+    *   Receiving the `AppIntent`.
+    *   Using the information from the intent (e.g., an object's `id`) to find the full object and its context (e.g., its index) from the current `AppState`.
+    *   Constructing the corresponding detailed `AppAction` (e.g., `.deleteTask(task: foundTask, index: foundIndex)`).
+    *   Passing this new `AppAction` to internal methods for recording and state mutation.
+
+6.  **View Refactoring:**
+    *   All SwiftUI views (`TaskListView`, `DailyScheduleView`, etc.) must be refactored to call `store.dispatch(...)` with the appropriate `AppIntent`.
     *   Views should receive the store via `@EnvironmentObject var store: AppStore`.
-    *   Data properties in views should be changed from `@Binding` to `let` constants since views can no longer directly modify state.
-    *   Views should pass closures down to child views for handling actions.
+    *   Data properties in views should be `let` constants, not `@Binding`, since views do not directly modify state.
+    *   Example: A delete button will call `store.dispatch(.deleteTask(id: task.id))`.
 
-### Undo/Redo Logic
+### 4.3. Undo/Redo Logic
 
-5.  **Undo/Redo Stacks:** The `AppStore` must maintain two private arrays: `undoStack: [AppAction]` and `redoStack: [AppAction]`.
+7.  **Undo/Redo Stacks:** The `AppStore` must maintain two private arrays: `undoStack: [AppAction]` and `redoStack: [AppAction]`. These stacks store the detailed `AppAction`s, not the `AppIntent`s.
 
-6.  **Dispatch Logic:** When an undoable action is dispatched:
-    *   Create the inverse action **before** applying the original action.
+8.  **Action Recording Logic:** When an undoable `AppAction` is generated by the store:
+    *   Create the inverse `AppAction` **before** applying the original action.
     *   Append the inverse action to the `undoStack`.
     *   Clear the `redoStack` completely.
-    *   Apply the action's change to the `AppState`.
+    *   Apply the `AppAction`'s change to the `AppState`.
 
-7.  **`undo()` Method:** The `AppStore` must provide an `undo()` method. When called, it must:
-    *   Check if the `undoStack` is not empty.
-    *   Remove the last action from the `undoStack`.
-    *   Create the inverse of that action and append it to the `redoStack`.
+9.  **`undo()` Method:** The `AppStore` must provide an `undo()` method. When called, it must:
+    *   Pop the last action from `undoStack`.
+    *   Create its inverse and push it to `redoStack`.
     *   Apply the action from the undo stack to the `AppState`.
 
-8.  **`redo()` Method:** The `AppStore` must provide a `redo()` method. When called, it must:
-    *   Check if the `redoStack` is not empty.
-    *   Remove the last action from the `redoStack`.
-    *   Create the inverse of that action and append it to the `undoStack`.
+10. **`redo()` Method:** The `AppStore` must provide a `redo()` method. When called, it must:
+    *   Pop the last action from `redoStack`.
+    *   Create its inverse and push it to `undoStack`.
     *   Apply the action from the redo stack to the `AppState`.
 
-9.  **macOS Integration:** 
-    *   The undo/redo commands must be added at the **app level** in `karenApp.swift` using the `.commands` modifier on the `WindowGroup`.
-    *   Use `CommandGroup(replacing: .undoRedo)` to replace the default undo/redo menu items.
-    *   The menu items must check `store.canUndo` and `store.canRedo` for their disabled state.
+11. **macOS Integration:**
+    *   The undo/redo commands must be added at the app level using the `.commands` modifier.
+    *   Use `CommandGroup(replacing: .undoRedo)` to replace the default menu items.
+    *   The menu items must use `store.canUndo` and `store.canRedo` for their disabled state.
     *   The keyboard shortcuts (`Cmd+Z` and `Cmd+Shift+Z`) must be explicitly set.
 
-### Feature-Specific Requirements
+### 4.4. Feature-Specific Requirements
 
-10. **Atomic Gestures:** 
-    *   Continuous user gestures in `TimeBlockView` must use local `@State` variables to track drag/resize state during the gesture.
-    *   The `TimeBlock` and `allBlocks` properties in `TimeBlockView` must be `let` constants, not bindings.
-    *   The `AppAction` should only be dispatched when the gesture is completed (in `onEnded`).
+12. **Atomic Gestures:**
+    *   Continuous user gestures (`TimeBlockView` drag/resize) must use local `@State` variables.
+    *   The `AppIntent` should only be dispatched when the gesture is completed (`onEnded`).
 
-11. **State Persistence:** 
-    *   The `AppState` must be saved using the `.onChange(of: scenePhase)` modifier in `karenApp.swift`.
-    *   Save when `scenePhase` becomes `.background`.
-    *   The state must be saved to the Application Support directory as a JSON file.
-    *   On app launch, `AppStore.load()` should attempt to load the saved state, falling back to sample data if none exists.
-    *   Add a `sampleData()` static method to `AppState` as an extension in `Models.swift`.
+13. **State Persistence:**
+    *   `AppState` must be saved to a JSON file in the Application Support directory when the app enters the background (`.onChange(of: scenePhase)`).
+    *   On launch, `AppStore.load()` should load the saved state, falling back to sample data if loading fails.
+    *   Add a `sampleData()` static method to `AppState`.
 
-12. **Inconsistent State Handling:** 
-    *   In the `apply` method, use guard statements to check if objects exist before modification.
+14. **Inconsistent State Handling:**
+    *   During intent-to-action translation, the `dispatch` method must safely handle cases where an ID is not found (e.g., an action targets a deleted item).
     *   If an object doesn't exist, call `triggerInconsistencyAlert()` and return early.
-    *   Use `@Published` properties in `AppStore` for alert state: `showAlert: Bool` and `alertMessage: String?`.
-    *   The alert should be attached to `ContentView` using the `.alert()` modifier.
-
-### Implementation Details
-
-13. **Inverse Action Calculation:** The `createUndoAction` method must handle:
-    *   For `updateTask`: swap old and new values.
-    *   For `reorderTasks`: calculate the reverse move considering the index shift.
-    *   For `updateTimeBlock`: swap old and new values.
-    *   Non-undoable actions should return themselves (though they won't be added to undo stack).
-
-14. **Preview Support:** The `#Preview` macro in `ContentView` must provide the store via `.environmentObject(AppStore(initialState: AppState.sampleData()))`.
+    *   Use `@Published` properties in `AppStore` for alert state and show it in `ContentView` with `.alert()`.
 
 ## 5. Non-Goals (Out of Scope)
 
 *   **Chat Input Undo:** The undo/redo for typing text in the chat input field will be handled by the native text field component, not the global undo system.
-*   **Chat History Undo:** Actions related to the chat history itself (sending or receiving messages) will **not** be undoable. Once a message appears in the chat, it is permanent for that session.
-*   **UI State Undo:** Changes to the UI that don't affect core data, such as resizing panels, changing the window size, or scrolling, will not be undoable.
+*   **Chat History Undo:** `AppIntent`s related to chat history (sending/receiving messages) will be translated to non-undoable `AppAction`s. Once a message appears, it is permanent for that session.
+*   **UI State Undo:** Changes to UI that don't affect core data (resizing panels, scrolling) will not be undoable.
 *   **No In-App Buttons:** We will not add any new Undo or Redo buttons to the application's UI. The menu bar is the only entry point.
 
 ## 6. Design Considerations
 
-*   **UI:** The only required UI change is connecting the logic to the existing macOS `Edit` menu. The `Undo` and `Redo` menu items will be enabled or disabled based on whether the `undoStack` or `redoStack` are empty.
-*   **Alerts:** The pop-up alert for inconsistent state should be a standard, native macOS alert dialog with a title (e.g., "Action Incomplete") and an "OK" button to dismiss.
+*   **UI:** The only required UI change is connecting the logic to the macOS `Edit` menu. The `Undo` and `Redo` menu items will be enabled or disabled based on `store.canUndo` and `store.canRedo`.
+*   **Alerts:** The pop-up alert for inconsistent state should be a standard, native macOS alert dialog with a title like "Action Incomplete" and an "OK" button.
 
 ## 7. Technical Considerations
 
-*   **`AppStore`:** This will be the new central hub for state. It should be an `@MainActor @ObservableObject` class with a `@StateObject` instance created in `karenApp.swift`.
-*   **`DailyScheduleView`:** The `ForEach` loop must iterate over the non-binding array: `ForEach(timeBlocks)` not `ForEach($timeBlocks)`.
-*   **State Persistence:** Use Swift's `Codable` protocol to easily serialize `AppState` to a JSON file and deserialize it on launch. The file should be named `karen_appstate.json`.
-*   **Chat Simulation:** The `sendChatMessage` action should trigger a simulated bot response after a delay, dispatching a `receiveChatMessage` action.
+*   **`AppStore`:** This is the central hub for state. It will be an `@MainActor @ObservableObject` class instantiated as a `@StateObject` in `karenApp.swift`.
+*   **State Persistence:** Use Swift's `Codable` protocol to serialize `AppState` to a JSON file named `karen_appstate.json`.
+*   **Chat Simulation:** The `sendChatMessage` intent should trigger a simulated bot response after a delay, which in turn dispatches a `receiveChatMessage` action internally.

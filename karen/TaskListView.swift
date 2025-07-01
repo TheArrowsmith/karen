@@ -20,7 +20,7 @@ struct TaskListView: View {
                 .buttonStyle(PlainButtonStyle())
                 .popover(isPresented: $isShowingAddTaskPopover, arrowEdge: .bottom) {
                     AddTaskView(onAddTask: { newTask in
-                        store.dispatch(.addTask(task: newTask, index: 0))
+                        store.dispatch(.createTask(newTask))
                     }, isPresented: $isShowingAddTaskPopover)
                 }
                 
@@ -38,15 +38,10 @@ struct TaskListView: View {
                     TaskItemView(
                         task: task,
                         onToggleComplete: { taskId in
-                            guard let task = store.state.tasks.first(where: { $0.id == taskId }) else { return }
-                            var updatedTask = task
-                            updatedTask.is_completed.toggle()
-                            store.dispatch(.updateTask(oldValue: task, newValue: updatedTask))
+                            store.dispatch(.toggleTaskCompletion(id: taskId))
                         },
-                        onDeleteTask: { taskToDelete in
-                            if let index = store.state.tasks.firstIndex(where: { $0.id == taskToDelete.id }) {
-                                store.dispatch(.deleteTask(task: taskToDelete, index: index))
-                            }
+                        onDeleteTask: { taskToDeleteId in
+                            store.dispatch(.deleteTask(id: taskToDeleteId))
                         }
                     )
                     .listRowInsets(EdgeInsets(top: 0, leading: 0, bottom: 1, trailing: 0))
@@ -66,7 +61,7 @@ struct TaskListView: View {
 struct TaskItemView: View {
     let task: Task
     let onToggleComplete: (String) -> Void
-    let onDeleteTask: (Task) -> Void
+    let onDeleteTask: (String) -> Void
     
     @State private var isHovering = false
     @State private var showDeleteConfirm = false
@@ -167,7 +162,7 @@ struct TaskItemView: View {
         }
         .alert("Delete Task?", isPresented: $showDeleteConfirm, presenting: task) { _ in
             Button("Delete", role: .destructive) {
-                onDeleteTask(task)
+                onDeleteTask(task.id)
             }
             Button("Cancel", role: .cancel) { }
         } message: { _ in
