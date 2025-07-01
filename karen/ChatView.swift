@@ -120,6 +120,7 @@ struct ChatBubbleView: View {
                 Text(message.text)
                     .font(.system(size: 14))
                     .foregroundColor(message.sender == .user ? .white : .primary)
+                    .textSelection(.enabled)
                     .padding(.horizontal, 16)
                     .padding(.vertical, 10)
                     .background(
