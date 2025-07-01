@@ -1,0 +1,10 @@
+fastapi
+uvicorn
+python-dotenv
+pydantic
+pydantic-settings
+openai
+langgraph
+langchain-openai
+scikit-learn
+numpy 
