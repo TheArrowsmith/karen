@@ -42,4 +42,27 @@ struct ChatMessage: Identifiable, Codable, Hashable {
     enum Sender: String, Codable {
         case user, bot
     }
+}
+
+extension AppState {
+    static func sampleData() -> AppState {
+        let tasks = [
+             Task(id: "1", title: "Review quarterly reports", description: "Analyze Q3 performance metrics.", is_completed: false, priority: .high, deadline: Date().addingTimeInterval(86400*2), predicted_duration_in_minutes: 120),
+             Task(id: "2", title: "Update project documentation", is_completed: false, priority: .medium, deadline: Date().addingTimeInterval(86400*5), predicted_duration_in_minutes: 45),
+             Task(id: "3", title: "Code review for new feature", description: "Review pull request #247.", is_completed: false, priority: .high, deadline: Date().addingTimeInterval(-86400), predicted_duration_in_minutes: 60)
+        ]
+        
+        let today = Calendar.current.startOfDay(for: Date())
+        let timeBlocks = [
+            TimeBlock(task_id: tasks[0].id, start_time: today.addingTimeInterval(3600*9), actual_duration_in_minutes: 90),
+            TimeBlock(task_id: tasks[1].id, start_time: today.addingTimeInterval(3600*11), actual_duration_in_minutes: 45),
+            TimeBlock(task_id: tasks[2].id, start_time: today.addingTimeInterval(3600*14), actual_duration_in_minutes: 60)
+        ]
+        
+        return AppState(
+            tasks: tasks,
+            timeBlocks: timeBlocks,
+            chatHistory: [ChatMessage(text: "Hello! How can I help you plan your day?", sender: .bot)]
+        )
+    }
 } 

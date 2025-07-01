@@ -1,0 +1,150 @@
+import Foundation
+import Combine
+
+@MainActor
+class AppStore: ObservableObject {
+    @Published private(set) var state: AppState
+    
+    // Properties for Undo/Redo
+    private var undoStack: [AppAction] = []
+    private var redoStack: [AppAction] = []
+    var canUndo: Bool { !undoStack.isEmpty }
+    var canRedo: Bool { !redoStack.isEmpty }
+    
+    // Properties for showing alerts on inconsistency
+    @Published var showAlert: Bool = false
+    @Published var alertMessage: String?
+
+    init(initialState: AppState) {
+        self.state = initialState
+    }
+    
+    // The main entry point for all state changes
+    func dispatch(_ action: AppAction) {
+        // For undoable actions, add to undo stack and clear redo stack
+        if isUndoable(action) {
+            // Before applying, capture the inverse for reordering
+            let undoAction = createUndoAction(for: action)
+            undoStack.append(undoAction)
+            redoStack.removeAll()
+        }
+        apply(action)
+    }
+    
+    func undo() {
+        guard let action = undoStack.popLast() else { return }
+        redoStack.append(createUndoAction(for: action))
+        apply(action) // Apply the inverse action
+    }
+    
+    func redo() {
+        guard let action = redoStack.popLast() else { return }
+        undoStack.append(createUndoAction(for: action))
+        apply(action) // Re-apply the original action
+    }
+
+    // `apply` performs the action
+    private func apply(_ action: AppAction) {
+        switch action {
+        case .updateTask(_, let newValue):
+            guard let index = state.tasks.firstIndex(where: { $0.id == newValue.id }) else {
+                triggerInconsistencyAlert(for: "task")
+                return
+            }
+            state.tasks[index] = newValue
+            
+        case .reorderTasks(let from, let to):
+            state.tasks.move(fromOffsets: from, toOffset: to)
+        
+        case .updateTimeBlock(_, let newValue):
+            guard let index = state.timeBlocks.firstIndex(where: { $0.id == newValue.id }) else {
+                triggerInconsistencyAlert(for: "time block")
+                return
+            }
+            state.timeBlocks[index] = newValue
+        
+        // --- Non-undoable Chat Actions ---
+        case .sendChatMessage(let message):
+            state.chatHistory.append(message)
+            let loadingMessage = ChatMessage(text: "", sender: .bot, isLoading: true)
+            self.dispatch(.receiveChatMessage(loadingMessage))
+            
+            // Simulate network delay and chatbot logic
+            DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) {
+                self.state.chatHistory.removeAll { $0.isLoading }
+                let response = ChatMessage(text: "I've received your message: '\(message.text)'. My logic is not fully implemented yet.", sender: .bot)
+                self.dispatch(.receiveChatMessage(response))
+            }
+            
+        case .receiveChatMessage(let message):
+            state.chatHistory.append(message)
+            
+        case .showChatbotError(let errorMessage):
+            state.chatHistory.append(ChatMessage(text: errorMessage, sender: .bot))
+        }
+    }
+    
+    // --- Helpers ---
+    private func createUndoAction(for action: AppAction) -> AppAction {
+        switch action {
+        case .updateTask(let oldValue, let newValue):
+            return .updateTask(oldValue: newValue, newValue: oldValue)
+        case .reorderTasks(let from, let to):
+            // The inverse of a move
+            var source = IndexSet()
+            if to > from.first! {
+                 source.insert(to - 1)
+                 return .reorderTasks(from: source, to: from.first!)
+            } else {
+                 source.insert(to)
+                 return .reorderTasks(from: source, to: from.first! + 1)
+            }
+        case .updateTimeBlock(let oldValue, let newValue):
+            return .updateTimeBlock(oldValue: newValue, newValue: oldValue)
+        default:
+            return action // Should not happen for undoable actions
+        }
+    }
+    
+    private func isUndoable(_ action: AppAction) -> Bool {
+        switch action {
+        case .sendChatMessage, .receiveChatMessage, .showChatbotError:
+            return false
+        default:
+            return true
+        }
+    }
+    
+    private func triggerInconsistencyAlert(for objectType: String) {
+        self.alertMessage = "An automated action could not be completed because the related \(objectType) was modified or deleted."
+        self.showAlert = true
+    }
+    
+    // --- State Persistence ---
+    private static func fileURL() throws -> URL {
+        try FileManager.default.url(for: .applicationSupportDirectory, in: .userDomainMask, appropriateFor: nil, create: true)
+            .appendingPathComponent("karen_appstate.json")
+    }
+
+    func save() {
+        do {
+            let data = try JSONEncoder().encode(state)
+            let outfile = try Self.fileURL()
+            try data.write(to: outfile)
+        } catch {
+            print("Error saving state: \(error.localizedDescription)")
+        }
+    }
+
+    static func load() -> AppState {
+        do {
+            let fileURL = try fileURL()
+            let data = try Data(contentsOf: fileURL)
+            let appState = try JSONDecoder().decode(AppState.self, from: data)
+            return appState
+        } catch {
+            print("Could not load state, using sample data. Error: \(error.localizedDescription)")
+            return AppState.sampleData()
+        }
+    }
+} 

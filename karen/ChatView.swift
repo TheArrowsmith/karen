@@ -1,7 +1,7 @@
 import SwiftUI
 
 struct ChatView: View {
-    @Binding var messages: [ChatMessage]
+    let messages: [ChatMessage]
     let onSendMessage: (String) -> Void
 
     @State private var inputText = ""
