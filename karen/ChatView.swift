@@ -89,6 +89,14 @@ struct ChatInputView: View {
             }
             .buttonStyle(PlainButtonStyle())
             .disabled(text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || isLoading) // Update disabled condition
+            .onHover { isHovering in
+                let shouldShowPointer = !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && !isLoading
+                if isHovering && shouldShowPointer {
+                    NSCursor.pointingHand.push()
+                } else if !isHovering {
+                    NSCursor.pop()
+                }
+            }
             .keyboardShortcut(.return, modifiers: []) // Allow Enter key to send
         }
         .padding(.horizontal, 20)

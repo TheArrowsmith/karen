@@ -18,6 +18,13 @@ struct TaskListView: View {
                         .font(.system(size: 18))
                 }
                 .buttonStyle(PlainButtonStyle())
+                .onHover { isHovering in
+                    if isHovering {
+                        NSCursor.pointingHand.push()
+                    } else {
+                        NSCursor.pop()
+                    }
+                }
                 .popover(isPresented: $isShowingAddTaskPopover, arrowEdge: .bottom) {
                     AddTaskView(onAddTask: { newTask in
                         store.dispatch(.createTask(newTask))
@@ -93,80 +100,87 @@ struct TaskItemView: View {
     }
     
     var body: some View {
-        ZStack(alignment: .topTrailing) {
-            HStack(alignment: .top, spacing: 12) {
-                Button(action: { onToggleComplete(task.id) }) {
-                    Image(systemName: task.is_completed ? "checkmark.square.fill" : "square")
-                        .foregroundColor(task.is_completed ? .blue : .gray)
-                        .font(.system(size: 16))
-                }
-                .buttonStyle(PlainButtonStyle())
+        HStack(alignment: .top, spacing: 12) {
+            Button(action: { onToggleComplete(task.id) }) {
+                Image(systemName: task.is_completed ? "checkmark.square.fill" : "square")
+                    .foregroundColor(task.is_completed ? .blue : .gray)
+                    .font(.system(size: 16))
+            }
+            .buttonStyle(PlainButtonStyle())
+            
+            VStack(alignment: .leading, spacing: 4) {
+                Text(task.title)
+                    .font(.system(size: 14, weight: .medium))
+                    .foregroundColor(task.is_completed ? .secondary : .primary)
+                    .strikethrough(task.is_completed)
                 
-                VStack(alignment: .leading, spacing: 4) {
-                    Text(task.title)
-                        .font(.system(size: 14, weight: .medium))
-                        .foregroundColor(task.is_completed ? .secondary : .primary)
-                        .strikethrough(task.is_completed)
-                    
-                    if let description = task.description {
-                        Text(description)
-                            .font(.system(size: 12))
-                            .foregroundColor(.secondary)
-                            .lineLimit(2)
-                    }
-                    
-                    HStack(spacing: 12) {
-                        if task.priority != nil {
-                            HStack(spacing: 4) {
-                                Circle()
-                                    .fill(priorityColor)
-                                    .frame(width: 6, height: 6)
-                                Text(task.priority!.rawValue.capitalized)
-                                    .font(.system(size: 11))
-                                    .foregroundColor(.secondary)
-                            }
-                        }
-                        
-                        if let deadlineText = deadlineText {
-                            HStack(spacing: 4) {
-                                Image(systemName: "calendar")
-                                    .font(.system(size: 10))
-                                Text(deadlineText)
-                                    .font(.system(size: 11))
-                            }
-                            .foregroundColor(task.deadline! < Date() ? .red : .secondary)
-                        }
-                        
-                        if let duration = task.predicted_duration_in_minutes {
-                            HStack(spacing: 4) {
-                                Image(systemName: "clock")
-                                    .font(.system(size: 10))
-                                Text("\(duration) min")
-                                    .font(.system(size: 11))
-                            }
-                            .foregroundColor(.secondary)
-                        }
-                    }
+                if let description = task.description {
+                    Text(description)
+                        .font(.system(size: 12))
+                        .foregroundColor(.secondary)
+                        .lineLimit(2)
                 }
                 
-                Spacer()
+                HStack(spacing: 12) {
+                    if task.priority != nil {
+                        HStack(spacing: 4) {
+                            Circle()
+                                .fill(priorityColor)
+                                .frame(width: 6, height: 6)
+                            Text(task.priority!.rawValue.capitalized)
+                                .font(.system(size: 11))
+                                .foregroundColor(.secondary)
+                        }
+                    }
+                    
+                    if let deadlineText = deadlineText {
+                        HStack(spacing: 4) {
+                            Image(systemName: "calendar")
+                                .font(.system(size: 10))
+                            Text(deadlineText)
+                                .font(.system(size: 11))
+                        }
+                        .foregroundColor(task.deadline! < Date() ? .red : .secondary)
+                    }
+                    
+                    if let duration = task.predicted_duration_in_minutes {
+                        HStack(spacing: 4) {
+                            Image(systemName: "clock")
+                                .font(.system(size: 10))
+                            Text("\(duration) min")
+                                .font(.system(size: 11))
+                        }
+                        .foregroundColor(.secondary)
+                    }
+                }
             }
             
-            if isHovering {
-                Button(action: { showDeleteConfirm = true }) {
-                    Image(systemName: "trash.fill")
-                        .foregroundColor(.red)
-                        .font(.system(size: 14))
-                }
-                .buttonStyle(PlainButtonStyle())
-                .padding(8)
-                .transition(.opacity.animation(.easeInOut(duration: 0.2)))
-            }
+            Spacer()
         }
         .padding(.vertical, 12)
         .padding(.horizontal, 20)
         .background(Color(NSColor.controlBackgroundColor).opacity(0.5))
         .contentShape(Rectangle())
+        .overlay(alignment: .topTrailing) {
+            if isHovering {
+                Button(action: { showDeleteConfirm = true }) {
+                    Image(systemName: "trash.fill")
+                        .foregroundColor(.red)
+                        .font(.system(size: 12))
+                }
+                .buttonStyle(PlainButtonStyle())
+                .onHover { isHovering in
+                    if isHovering {
+                        NSCursor.pointingHand.push()
+                    } else {
+                        NSCursor.pop()
+                    }
+                }
+                .padding(.top, 12)
+                .padding(.trailing, 12)
+                .transition(.opacity.animation(.easeInOut(duration: 0.2)))
+            }
+        }
         .onHover { hovering in
             self.isHovering = hovering
         }
