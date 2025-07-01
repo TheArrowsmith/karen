@@ -33,26 +33,36 @@ struct TaskListView: View {
             .padding(.vertical, 16)
             .background(Color(NSColor.controlBackgroundColor))
             
-            List {
-                ForEach(store.state.tasks) { task in
-                    TaskItemView(
-                        task: task,
-                        onToggleComplete: { taskId in
-                            store.dispatch(.toggleTaskCompletion(id: taskId))
-                        },
-                        onDeleteTask: { taskToDeleteId in
-                            store.dispatch(.deleteTask(id: taskToDeleteId))
-                        }
-                    )
-                    .listRowInsets(EdgeInsets(top: 0, leading: 0, bottom: 1, trailing: 0))
-                    .listRowSeparator(.hidden)
-                    .listRowBackground(Color.clear)
+            ScrollViewReader { proxy in
+                List {
+                    ForEach(store.state.tasks) { task in
+                        TaskItemView(
+                            task: task,
+                            onToggleComplete: { taskId in
+                                store.dispatch(.toggleTaskCompletion(id: taskId))
+                            },
+                            onDeleteTask: { taskToDeleteId in
+                                store.dispatch(.deleteTask(id: taskToDeleteId))
+                            }
+                        )
+                        .listRowInsets(EdgeInsets(top: 0, leading: 0, bottom: 1, trailing: 0))
+                        .listRowSeparator(.hidden)
+                        .listRowBackground(Color.clear)
+                        .id(task.id)
+                    }
+                    .onMove(perform: onReorderTasks)
                 }
-                .onMove(perform: onReorderTasks)
+                .listStyle(PlainListStyle())
+                .scrollContentBackground(.hidden)
+                .background(Color(NSColor.windowBackgroundColor))
+                .onChange(of: store.state.tasks.first?.id) { _ in
+                    if let firstTaskId = store.state.tasks.first?.id {
+                        withAnimation {
+                            proxy.scrollTo(firstTaskId, anchor: .top)
+                        }
+                    }
+                }
             }
-            .listStyle(PlainListStyle())
-            .scrollContentBackground(.hidden)
-            .background(Color(NSColor.windowBackgroundColor))
         }
         .background(Color(NSColor.windowBackgroundColor))
     }

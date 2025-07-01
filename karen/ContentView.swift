@@ -24,7 +24,11 @@ struct ContentView: View {
 
             // Panel 2: Chat (Center)
             ChatView(
-                messages: store.state.chatHistory, // Pass read-only array
+                messages: store.state.chatHistory,
+                loadingState: store.chatLoadingState, // NEW
+                onRetry: { // NEW
+                    store.dispatch(.retryLastChatMessage)
+                },
                 onSendMessage: { text in
                     store.dispatch(.sendChatMessage(text: text))
                 }

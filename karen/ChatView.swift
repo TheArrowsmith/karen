@@ -2,6 +2,8 @@ import SwiftUI
 
 struct ChatView: View {
     let messages: [ChatMessage]
+    let loadingState: AppStore.ChatLoadingState // NEW
+    let onRetry: () -> Void // NEW
     let onSendMessage: (String) -> Void
 
     @State private var inputText = ""
@@ -17,6 +19,18 @@ struct ChatView: View {
                             ChatBubbleView(message: message)
                                 .id(message.id)
                         }
+
+                        // Add this switch statement right after the ForEach loop
+                        switch loadingState {
+                        case .loading:
+                            LoadingIndicator()
+                                .padding(.top, 10)
+                        case .error(let error, _):
+                            ChatErrorView(error: error, onRetry: onRetry)
+                                .padding(.top, 10)
+                        case .idle:
+                            EmptyView()
+                        }
                         
                         Color.clear
                             .frame(height: 1)
@@ -25,7 +39,7 @@ struct ChatView: View {
                     .padding(.vertical, 16)
                     .padding(.horizontal, 20)
                 }
-                .onChange(of: messages.count) { _ in
+                .onChange(of: messages.count) {
                     withAnimation(.easeOut(duration: 0.3)) {
                         proxy.scrollTo(bottomID, anchor: .bottom)
                     }
@@ -35,7 +49,11 @@ struct ChatView: View {
             Divider()
             
             // Input area
-            ChatInputView(text: $inputText, onSend: sendMessage)
+            ChatInputView(
+                text: $inputText,
+                isLoading: loadingState.isLoading, // Pass a boolean
+                onSend: sendMessage
+            )
         }
         .background(Color(NSColor.windowBackgroundColor))
     }
@@ -49,6 +67,7 @@ struct ChatView: View {
 
 struct ChatInputView: View {
     @Binding var text: String
+    let isLoading: Bool // NEW
     let onSend: () -> Void
     @FocusState private var isTextFieldFocused: Bool
 
@@ -66,10 +85,10 @@ struct ChatInputView: View {
             Button(action: onSend) {
                 Image(systemName: "arrow.up.circle.fill")
                     .font(.system(size: 24))
-                    .foregroundColor(.blue)
+                    .foregroundColor(isLoading ? .gray : .blue) // Update color
             }
             .buttonStyle(PlainButtonStyle())
-            .disabled(text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+            .disabled(text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || isLoading) // Update disabled condition
             .keyboardShortcut(.return, modifiers: []) // Allow Enter key to send
         }
         .padding(.horizontal, 20)

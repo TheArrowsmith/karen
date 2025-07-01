@@ -1,9 +1,13 @@
 import Foundation
 import Combine
 
+// Type alias to avoid conflict with our custom Task model
+typealias AsyncTask = _Concurrency.Task
+
 @MainActor
 class AppStore: ObservableObject {
     @Published private(set) var state: AppState
+    @Published var chatLoadingState: ChatLoadingState = .idle // NEW
     
     // Properties for Undo/Redo
     private var undoStack: [AppAction] = []
@@ -14,24 +18,48 @@ class AppStore: ObservableObject {
     // Properties for showing alerts on inconsistency
     @Published var showAlert: Bool = false
     @Published var alertMessage: String?
+    
+    private let apiService = APIService() // NEW
+    
+    // NEW enum to manage UI state for chat
+    enum ChatLoadingState {
+        case idle
+        case loading
+        case error(error: APIError, onRetry: () async -> Void)
+        
+        var isLoading: Bool {
+            if case .loading = self { return true }
+            return false
+        }
+    }
 
     init(initialState: AppState) {
         self.state = initialState
     }
     
     // The main entry point now takes an Intent
-    func dispatch(_ intent: AppIntent) {
+    func dispatch(_ intent: AppIntent, isFromAPI: Bool = false) {
         // Translate the Intent into a fully-hydrated Action
         switch intent {
         // --- Task Intents ---
         case .createTask(let task):
             // For add, the index is usually 0 (prepended)
+            if isFromAPI {
+                print("Creating task from API with ID: \(task.id), title: \(task.title)")
+            }
             let action = AppAction.addTask(task: task, index: 0)
             applyAndRecord(action)
 
         case .deleteTask(let id):
             guard let index = state.tasks.firstIndex(where: { $0.id == id }) else {
-                triggerInconsistencyAlert(for: "task with ID \(id)")
+                if isFromAPI {
+                    print("Failed to find task with ID: \(id)")
+                    print("Current task IDs: \(state.tasks.map { $0.id })")
+                    let errorMessage = "Sorry, I couldn't find the task you mentioned. It might have been changed or deleted."
+                    apply(.receiveChatMessage(ChatMessage(text: errorMessage, sender: .bot)))
+                } else {
+                    triggerInconsistencyAlert(for: "task with ID \(id)")
+                }
                 return
             }
             let taskToDelete = state.tasks[index]
@@ -40,7 +68,12 @@ class AppStore: ObservableObject {
 
         case .toggleTaskCompletion(let id):
             guard let index = state.tasks.firstIndex(where: { $0.id == id }) else {
-                triggerInconsistencyAlert(for: "task with ID \(id)")
+                if isFromAPI {
+                    let errorMessage = "Sorry, I couldn't find the task you mentioned. It might have been changed or deleted."
+                    apply(.receiveChatMessage(ChatMessage(text: errorMessage, sender: .bot)))
+                } else {
+                    triggerInconsistencyAlert(for: "task with ID \(id)")
+                }
                 return
             }
             let oldTask = state.tasks[index]
@@ -51,7 +84,12 @@ class AppStore: ObservableObject {
             
         case .updateTask(let id, let updatedTask):
              guard let oldTask = state.tasks.first(where: { $0.id == id }) else {
-                triggerInconsistencyAlert(for: "task with ID \(id)")
+                if isFromAPI {
+                    let errorMessage = "Sorry, I couldn't find the task you mentioned. It might have been changed or deleted."
+                    apply(.receiveChatMessage(ChatMessage(text: errorMessage, sender: .bot)))
+                } else {
+                    triggerInconsistencyAlert(for: "task with ID \(id)")
+                }
                 return
             }
             let action = AppAction.updateTask(oldValue: oldTask, newValue: updatedTask)
@@ -64,7 +102,12 @@ class AppStore: ObservableObject {
         // --- TimeBlock Intents ---
         case .updateTimeBlock(let id, let newStartTime, let newDuration):
             guard let oldBlock = state.timeBlocks.first(where: { $0.id == id }) else {
-                triggerInconsistencyAlert(for: "time block with ID \(id)")
+                if isFromAPI {
+                    let errorMessage = "Sorry, I couldn't find the time block you mentioned."
+                    apply(.receiveChatMessage(ChatMessage(text: errorMessage, sender: .bot)))
+                } else {
+                    triggerInconsistencyAlert(for: "time block with ID \(id)")
+                }
                 return
             }
             var newBlock = oldBlock
@@ -75,9 +118,32 @@ class AppStore: ObservableObject {
 
         // --- Chat Intents ---
         case .sendChatMessage(let text):
-            // Non-undoable actions are applied directly
+            // Add the user's message to the history immediately
             let message = ChatMessage(text: text, sender: .user)
             apply(.sendChatMessage(message))
+
+            // Create the request body *before* the async task
+            let requestBody = ChatRequest(tasks: state.tasks, chatHistory: state.chatHistory)
+
+            // Define the task to be executed
+            let task = { [weak self] in
+                guard let self else { return }
+                await self.handleSend(requestBody: requestBody)
+            }
+
+            // Set loading state and kick off the task
+            chatLoadingState = .loading
+            AsyncTask {
+                await task()
+            }
+            
+        case .retryLastChatMessage:
+            if case .error(_, let onRetry) = chatLoadingState {
+                chatLoadingState = .loading
+                AsyncTask {
+                    await onRetry()
+                }
+            }
         }
     }
     
@@ -101,6 +167,55 @@ class AppStore: ObservableObject {
         undoStack.append(createUndoAction(for: action))
         apply(action) // Re-apply the original action
     }
+    
+    // Add this new private method to AppStore
+    private func handleSend(requestBody: ChatRequest) async {
+        let result = await apiService.send(requestBody: requestBody)
+        
+        switch result {
+        case .success(let response):
+            self.chatLoadingState = .idle
+            
+            print("API Response received with \(response.actions.count) actions")
+            
+            // Add the bot's response message
+            let botMessage = ChatMessage(text: response.chat_response, sender: .bot)
+            self.apply(.receiveChatMessage(botMessage))
+            
+            // Sequentially apply all actions from the server
+            for apiAction in response.actions {
+                print("Processing API action: \(apiAction.type)")
+                if let intent = mapToAction(apiAction) {
+                    print("Mapped to intent: \(intent)")
+                    self.dispatch(intent, isFromAPI: true)
+                } else {
+                    let errorMessage = "Sorry, I received an action I couldn't understand."
+                    self.apply(.receiveChatMessage(ChatMessage(text: errorMessage, sender: .bot)))
+                }
+            }
+            
+        case .failure(let error):
+            // On failure, set the error state and provide a retry closure
+            self.chatLoadingState = .error(error: error) {
+                // The retry action re-triggers this same function
+                await self.handleSend(requestBody: requestBody)
+            }
+        }
+    }
+    
+    // Add this new private method to AppStore
+    private func mapToAction(_ apiAction: APIAction) -> AppIntent? {
+        switch apiAction.payload {
+        case .create(let task):
+            return .createTask(task)
+        case .delete(let payload):
+            return .deleteTask(id: payload.id)
+        case .toggle(let payload):
+            return .toggleTaskCompletion(id: payload.id)
+        case .update(let payload):
+            return .updateTask(id: payload.id, updatedTask: payload.updatedTask)
+        }
+    }
 
     // `apply` performs the action
     private func apply(_ action: AppAction) {
@@ -111,14 +226,16 @@ class AppStore: ObservableObject {
         case .deleteTask(_, let index):
             // Ensure the index is valid before trying to remove
             guard state.tasks.indices.contains(index) else {
-                triggerInconsistencyAlert(for: "task")
+                // This shouldn't happen if dispatch is working correctly
+                print("Warning: Attempted to delete task at invalid index \(index)")
                 return
             }
             state.tasks.remove(at: index)
             
         case .updateTask(_, let newValue):
             guard let index = state.tasks.firstIndex(where: { $0.id == newValue.id }) else {
-                triggerInconsistencyAlert(for: "task")
+                // This shouldn't happen if dispatch is working correctly
+                print("Warning: Attempted to update non-existent task with ID \(newValue.id)")
                 return
             }
             state.tasks[index] = newValue
@@ -128,7 +245,8 @@ class AppStore: ObservableObject {
         
         case .updateTimeBlock(_, let newValue):
             guard let index = state.timeBlocks.firstIndex(where: { $0.id == newValue.id }) else {
-                triggerInconsistencyAlert(for: "time block")
+                // This shouldn't happen if dispatch is working correctly
+                print("Warning: Attempted to update non-existent time block with ID \(newValue.id)")
                 return
             }
             state.timeBlocks[index] = newValue
@@ -136,15 +254,7 @@ class AppStore: ObservableObject {
         // --- Non-undoable Chat Actions ---
         case .sendChatMessage(let message):
             state.chatHistory.append(message)
-            let loadingMessage = ChatMessage(text: "", sender: .bot, isLoading: true)
-            apply(.receiveChatMessage(loadingMessage))
-            
-            // Simulate network delay and chatbot logic
-            DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) {
-                self.state.chatHistory.removeAll { $0.isLoading }
-                let response = ChatMessage(text: "I've received your message: '\(message.text)'. My logic is not fully implemented yet.", sender: .bot)
-                self.apply(.receiveChatMessage(response))
-            }
+            // REMOVE all the old logic here (creating loadingMessage, DispatchQueue.main.asyncAfter, etc.)
             
         case .receiveChatMessage(let message):
             state.chatHistory.append(message)
