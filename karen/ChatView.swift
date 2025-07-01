@@ -50,12 +50,15 @@ struct ChatView: View {
 struct ChatInputView: View {
     @Binding var text: String
     let onSend: () -> Void
+    @FocusState private var isTextFieldFocused: Bool
 
     var body: some View {
         HStack(spacing: 12) {
+            // Use default TextField style which properly supports all keyboard shortcuts
             TextField("Type your message...", text: $text)
-                .textFieldStyle(PlainTextFieldStyle())
+                .textFieldStyle(.automatic) // Use automatic style for proper system behavior
                 .font(.system(size: 14))
+                .focused($isTextFieldFocused)
                 .onSubmit {
                     onSend()
                 }
@@ -67,10 +70,15 @@ struct ChatInputView: View {
             }
             .buttonStyle(PlainButtonStyle())
             .disabled(text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+            .keyboardShortcut(.return, modifiers: []) // Allow Enter key to send
         }
         .padding(.horizontal, 20)
         .padding(.vertical, 12)
         .background(Color(NSColor.controlBackgroundColor))
+        .onAppear {
+            // Ensure the text field gets focus when view appears
+            isTextFieldFocused = true
+        }
     }
 }
 
