@@ -1,7 +1,7 @@
 import SwiftUI
 
 struct DailyScheduleView: View {
-    @Binding var timeBlocks: [TimeBlock]
+    let timeBlocks: [TimeBlock]
     let tasks: [Task]
     let onUpdateBlock: (String, Date, Int) -> Void
     
@@ -35,10 +35,10 @@ struct DailyScheduleView: View {
                         HourlyGridView(hourHeight: hourHeight)
                         
                         // Render the interactive TimeBlock views
-                        ForEach($timeBlocks) { $block in
+                        ForEach(timeBlocks) { block in
                             TimeBlockView(
-                                block: $block,
-                                allBlocks: $timeBlocks,
+                                block: block,
+                                allBlocks: timeBlocks,
                                 taskTitle: tasks.first(where: { $0.id == block.task_id })?.title ?? "Untitled",
                                 hourHeight: hourHeight,
                                 onUpdate: onUpdateBlock
@@ -92,8 +92,8 @@ struct HourlyGridView: View {
 }
 
 struct TimeBlockView: View {
-    @Binding var block: TimeBlock
-    @Binding var allBlocks: [TimeBlock]
+    let block: TimeBlock // No longer a binding
+    let allBlocks: [TimeBlock] // No longer a binding
     let taskTitle: String
     let hourHeight: CGFloat
     let onUpdate: (String, Date, Int) -> Void
