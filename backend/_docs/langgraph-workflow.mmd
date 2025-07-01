@@ -1,0 +1,48 @@
+graph TD
+    subgraph LangGraph Workflow
+
+    A[Start] --> B{Analyze Intent};
+
+    B -- Is it a task-related query? --> C{Find Candidate Tasks};
+    B -- Is it an out-of-scope query? --> H[Generate Conversational Response];
+    B -- Is it a simple chat? --> H;
+    B -- Is it an incomplete query? --> G{Ask for Clarification};
+
+
+    C -- For create, update, delete, or toggle --> D{Generate Action Parameters};
+    C -- No matching tasks found --> G;
+
+    D -- Parameters are clear and unambiguous --> E{Execute Tool};
+    D -- Query is ambiguous (multiple tasks match) --> G;
+
+    E -- Tool Execution Succeeded --> F[Format Final Response];
+
+    G --> F;
+    H --> F;
+
+    F --> Z[End: Return JSON with Actions & Chat Message];
+
+    end
+
+    %% Node Styling and Descriptions
+    style A fill:#c9f7d7,stroke:#333,stroke-width:2px
+    style Z fill:#c9f7d7,stroke:#333,stroke-width:2px
+    style B fill:#e6dcf7,stroke:#333,stroke-width:2px
+    style C fill:#f7f3dc,stroke:#333,stroke-width:2px
+    style D fill:#f7e8dc,stroke:#333,stroke-width:2px
+    style E fill:#dcf7f7,stroke:#333,stroke-width:2px
+    style F fill:#f7dcdc,stroke:#333,stroke-width:2px
+    style G fill:#f7e8dc,stroke:#333,stroke-width:2px
+    style H fill:#f7e8dc,stroke:#333,stroke-width:2px
+
+
+    %% Node Text Definitions
+    A(Start: Receive App State and User Message)
+    B{Agent: Analyze Intent<br>Use GPT-4.1-nano to classify the user's intent: <br>- Create/Update/Delete/Toggle Task<br>- Clarification Needed<br>- Out-of-Scope/Nonsense<br>- Simple Chat}
+    C{Tool: Find Candidate Tasks<br>Use text-embedding-3-small to find top 3-5 tasks<br>semantically similar to user's query. <br>This is skipped for 'create' intents.}
+    D{Agent: Generate Action Parameters<br>Given candidate tasks, instruct GPT-4.1-nano to<br>extract exact parameters for an action.<br>Example: task ID, new priority, new title.}
+    G{Agent: Ask for Clarification<br>If parameters are missing or ambiguous,<br>instruct GPT-4.1-nano to formulate a clarifying question.<br>Example: 'Which task did you mean?'}
+    H{Agent: Generate Conversational Response<br>If the query is out-of-scope or just chat,<br>instruct GPT-4.1-nano to generate a friendly, helpful response.}
+    E{Executor: Execute Tool<br>Take the generated parameters from Node D<br>and format them into the final JSON action objects.<br>Example: &#123; action_type: 'deleteTask', payload: &#123; id: '...' &#125; &#125;}
+    F(Format Final Response<br>Combine the generated actions if any<br>and the final chat message into a single JSON object.)
+    Z(End: Return Response to Frontend)
