@@ -35,17 +35,18 @@ struct ContentView: View {
             )
             .frame(minWidth: 400)
             
-            Divider()
+            // Commenting out the Daily Schedule panel temporarily
+            // Divider()
 
-            // Panel 3: Daily Schedule (Right)
-            DailyScheduleView(
-                timeBlocks: store.state.timeBlocks, // Pass read-only array
-                tasks: store.state.tasks,
-                onUpdateBlock: { blockId, newStartTime, newDuration in
-                    store.dispatch(.updateTimeBlock(id: blockId, newStartTime: newStartTime, newDuration: newDuration))
-                }
-            )
-            .frame(width: 320)
+            // // Panel 3: Daily Schedule (Right)
+            // DailyScheduleView(
+            //     timeBlocks: store.state.timeBlocks, // Pass read-only array
+            //     tasks: store.state.tasks,
+            //     onUpdateBlock: { blockId, newStartTime, newDuration in
+            //         store.dispatch(.updateTimeBlock(id: blockId, newStartTime: newStartTime, newDuration: newDuration))
+            //     }
+            // )
+            // .frame(width: 320)
         }
         .frame(minHeight: 600)
         .alert("Action Incomplete", isPresented: $store.showAlert, presenting: store.alertMessage) { _ in
