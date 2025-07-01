@@ -14,13 +14,6 @@ struct ContentView: View {
         HStack(spacing: 0) {
             // Panel 1: Task List (Left)
             TaskListView(
-                tasks: store.state.tasks,
-                onToggleComplete: { taskId in
-                    guard let task = store.state.tasks.first(where: { $0.id == taskId }) else { return }
-                    var updatedTask = task
-                    updatedTask.is_completed.toggle()
-                    store.dispatch(.updateTask(oldValue: task, newValue: updatedTask))
-                },
                 onReorderTasks: { from, to in
                     store.dispatch(.reorderTasks(from: from, to: to))
                 }
