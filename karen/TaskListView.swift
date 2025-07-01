@@ -1,9 +1,10 @@
 import SwiftUI
 
 struct TaskListView: View {
-    let tasks: [Task]
-    let onToggleComplete: (String) -> Void
+    @EnvironmentObject var store: AppStore
     let onReorderTasks: (IndexSet, Int) -> Void
+    
+    @State private var isShowingAddTaskPopover = false
     
     var body: some View {
         VStack(spacing: 0) {
@@ -11,8 +12,20 @@ struct TaskListView: View {
             HStack {
                 Text("Tasks")
                     .font(.system(size: 20, weight: .semibold))
+                
+                Button(action: { isShowingAddTaskPopover = true }) {
+                    Image(systemName: "plus.circle.fill")
+                        .font(.system(size: 18))
+                }
+                .buttonStyle(PlainButtonStyle())
+                .popover(isPresented: $isShowingAddTaskPopover, arrowEdge: .bottom) {
+                    AddTaskView(onAddTask: { newTask in
+                        store.dispatch(.addTask(task: newTask, index: 0))
+                    }, isPresented: $isShowingAddTaskPopover)
+                }
+                
                 Spacer()
-                Text("\(tasks.count)")
+                Text("\(store.state.tasks.count)")
                     .font(.system(size: 14))
                     .foregroundColor(.secondary)
             }
@@ -21,11 +34,24 @@ struct TaskListView: View {
             .background(Color(NSColor.controlBackgroundColor))
             
             List {
-                ForEach(tasks) { task in
-                    TaskItemView(task: task, onToggleComplete: onToggleComplete)
-                        .listRowInsets(EdgeInsets(top: 0, leading: 0, bottom: 1, trailing: 0))
-                        .listRowSeparator(.hidden)
-                        .listRowBackground(Color.clear)
+                ForEach(store.state.tasks) { task in
+                    TaskItemView(
+                        task: task,
+                        onToggleComplete: { taskId in
+                            guard let task = store.state.tasks.first(where: { $0.id == taskId }) else { return }
+                            var updatedTask = task
+                            updatedTask.is_completed.toggle()
+                            store.dispatch(.updateTask(oldValue: task, newValue: updatedTask))
+                        },
+                        onDeleteTask: { taskToDelete in
+                            if let index = store.state.tasks.firstIndex(where: { $0.id == taskToDelete.id }) {
+                                store.dispatch(.deleteTask(task: taskToDelete, index: index))
+                            }
+                        }
+                    )
+                    .listRowInsets(EdgeInsets(top: 0, leading: 0, bottom: 1, trailing: 0))
+                    .listRowSeparator(.hidden)
+                    .listRowBackground(Color.clear)
                 }
                 .onMove(perform: onReorderTasks)
             }
@@ -40,6 +66,10 @@ struct TaskListView: View {
 struct TaskItemView: View {
     let task: Task
     let onToggleComplete: (String) -> Void
+    let onDeleteTask: (Task) -> Void
+    
+    @State private var isHovering = false
+    @State private var showDeleteConfirm = false
     
     var priorityColor: Color {
         switch task.priority {
@@ -58,66 +88,90 @@ struct TaskItemView: View {
     }
     
     var body: some View {
-        HStack(alignment: .top, spacing: 12) {
-            Button(action: { onToggleComplete(task.id) }) {
-                Image(systemName: task.is_completed ? "checkmark.square.fill" : "square")
-                    .foregroundColor(task.is_completed ? .blue : .gray)
-                    .font(.system(size: 16))
-            }
-            .buttonStyle(PlainButtonStyle())
-            
-            VStack(alignment: .leading, spacing: 4) {
-                Text(task.title)
-                    .font(.system(size: 14, weight: .medium))
-                    .foregroundColor(task.is_completed ? .secondary : .primary)
-                    .strikethrough(task.is_completed)
-                
-                if let description = task.description {
-                    Text(description)
-                        .font(.system(size: 12))
-                        .foregroundColor(.secondary)
-                        .lineLimit(2)
+        ZStack(alignment: .topTrailing) {
+            HStack(alignment: .top, spacing: 12) {
+                Button(action: { onToggleComplete(task.id) }) {
+                    Image(systemName: task.is_completed ? "checkmark.square.fill" : "square")
+                        .foregroundColor(task.is_completed ? .blue : .gray)
+                        .font(.system(size: 16))
                 }
+                .buttonStyle(PlainButtonStyle())
                 
-                HStack(spacing: 12) {
-                    if task.priority != nil {
-                        HStack(spacing: 4) {
-                            Circle()
-                                .fill(priorityColor)
-                                .frame(width: 6, height: 6)
-                            Text(task.priority!.rawValue.capitalized)
-                                .font(.system(size: 11))
-                                .foregroundColor(.secondary)
-                        }
+                VStack(alignment: .leading, spacing: 4) {
+                    Text(task.title)
+                        .font(.system(size: 14, weight: .medium))
+                        .foregroundColor(task.is_completed ? .secondary : .primary)
+                        .strikethrough(task.is_completed)
+                    
+                    if let description = task.description {
+                        Text(description)
+                            .font(.system(size: 12))
+                            .foregroundColor(.secondary)
+                            .lineLimit(2)
                     }
                     
-                    if let deadlineText = deadlineText {
-                        HStack(spacing: 4) {
-                            Image(systemName: "calendar")
-                                .font(.system(size: 10))
-                            Text(deadlineText)
-                                .font(.system(size: 11))
+                    HStack(spacing: 12) {
+                        if task.priority != nil {
+                            HStack(spacing: 4) {
+                                Circle()
+                                    .fill(priorityColor)
+                                    .frame(width: 6, height: 6)
+                                Text(task.priority!.rawValue.capitalized)
+                                    .font(.system(size: 11))
+                                    .foregroundColor(.secondary)
+                            }
                         }
-                        .foregroundColor(task.deadline! < Date() ? .red : .secondary)
-                    }
-                    
-                    if let duration = task.predicted_duration_in_minutes {
-                        HStack(spacing: 4) {
-                            Image(systemName: "clock")
-                                .font(.system(size: 10))
-                            Text("\(duration) min")
-                                .font(.system(size: 11))
+                        
+                        if let deadlineText = deadlineText {
+                            HStack(spacing: 4) {
+                                Image(systemName: "calendar")
+                                    .font(.system(size: 10))
+                                Text(deadlineText)
+                                    .font(.system(size: 11))
+                            }
+                            .foregroundColor(task.deadline! < Date() ? .red : .secondary)
                         }
-                        .foregroundColor(.secondary)
+                        
+                        if let duration = task.predicted_duration_in_minutes {
+                            HStack(spacing: 4) {
+                                Image(systemName: "clock")
+                                    .font(.system(size: 10))
+                                Text("\(duration) min")
+                                    .font(.system(size: 11))
+                            }
+                            .foregroundColor(.secondary)
+                        }
                     }
                 }
+                
+                Spacer()
             }
             
-            Spacer()
+            if isHovering {
+                Button(action: { showDeleteConfirm = true }) {
+                    Image(systemName: "trash.fill")
+                        .foregroundColor(.red)
+                        .font(.system(size: 14))
+                }
+                .buttonStyle(PlainButtonStyle())
+                .padding(8)
+                .transition(.opacity.animation(.easeInOut(duration: 0.2)))
+            }
         }
         .padding(.vertical, 12)
         .padding(.horizontal, 20)
         .background(Color(NSColor.controlBackgroundColor).opacity(0.5))
         .contentShape(Rectangle())
+        .onHover { hovering in
+            self.isHovering = hovering
+        }
+        .alert("Delete Task?", isPresented: $showDeleteConfirm, presenting: task) { _ in
+            Button("Delete", role: .destructive) {
+                onDeleteTask(task)
+            }
+            Button("Cancel", role: .cancel) { }
+        } message: { _ in
+            Text("Are you sure you want to delete this task?")
+        }
     }
 } 

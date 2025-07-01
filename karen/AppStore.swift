@@ -46,6 +46,17 @@ class AppStore: ObservableObject {
     // `apply` performs the action
     private func apply(_ action: AppAction) {
         switch action {
+        case .addTask(let task, let index):
+            state.tasks.insert(task, at: index)
+            
+        case .deleteTask(_, let index):
+            // Ensure the index is valid before trying to remove
+            guard state.tasks.indices.contains(index) else {
+                triggerInconsistencyAlert(for: "task")
+                return
+            }
+            state.tasks.remove(at: index)
+            
         case .updateTask(_, let newValue):
             guard let index = state.tasks.firstIndex(where: { $0.id == newValue.id }) else {
                 triggerInconsistencyAlert(for: "task")
@@ -87,6 +98,12 @@ class AppStore: ObservableObject {
     // --- Helpers ---
     private func createUndoAction(for action: AppAction) -> AppAction {
         switch action {
+        case .addTask(let task, let index):
+            return .deleteTask(task: task, index: index)
+            
+        case .deleteTask(let task, let index):
+            return .addTask(task: task, index: index)
+            
         case .updateTask(let oldValue, let newValue):
             return .updateTask(oldValue: newValue, newValue: oldValue)
         case .reorderTasks(let from, let to):

@@ -3,6 +3,8 @@ import Foundation
 // Defines all possible state-mutating actions in the app.
 enum AppAction {
     // Task Actions
+    case addTask(task: Task, index: Int)
+    case deleteTask(task: Task, index: Int)
     case updateTask(oldValue: Task, newValue: Task)
     case reorderTasks(from: IndexSet, to: Int)
 
