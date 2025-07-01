@@ -2,7 +2,7 @@ import Foundation
 
 // Represents the "what" - the core to-do item
 struct Task: Identifiable, Codable, Hashable {
-    var id: String = UUID().uuidString
+    var id: String
     var title: String
     var description: String?
     var is_completed: Bool = false
@@ -10,6 +10,27 @@ struct Task: Identifiable, Codable, Hashable {
     var creation_date: Date = Date()
     var deadline: Date?
     var predicted_duration_in_minutes: Int?
+    
+    // Custom initializer that accepts an optional ID
+    init(
+        id: String? = nil,
+        title: String,
+        description: String? = nil,
+        is_completed: Bool = false,
+        priority: Priority? = nil,
+        creation_date: Date = Date(),
+        deadline: Date? = nil,
+        predicted_duration_in_minutes: Int? = nil
+    ) {
+        self.id = id ?? UUID().uuidString
+        self.title = title
+        self.description = description
+        self.is_completed = is_completed
+        self.priority = priority
+        self.creation_date = creation_date
+        self.deadline = deadline
+        self.predicted_duration_in_minutes = predicted_duration_in_minutes
+    }
 }
 
 // The Priority Enum for Tasks
