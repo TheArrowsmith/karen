@@ -31,6 +31,18 @@ struct Task: Identifiable, Codable, Hashable {
         self.deadline = deadline
         self.predicted_duration_in_minutes = predicted_duration_in_minutes
     }
+    
+    // Custom coding keys to match Python field names
+    enum CodingKeys: String, CodingKey {
+        case id
+        case title
+        case description
+        case is_completed
+        case priority
+        case creation_date
+        case deadline
+        case predicted_duration_in_minutes
+    }
 }
 
 // The Priority Enum for Tasks
@@ -44,6 +56,14 @@ struct TimeBlock: Identifiable, Codable, Hashable {
     var task_id: String
     var start_time: Date
     var actual_duration_in_minutes: Int
+    
+    // Custom coding keys to match Python field names (already using snake_case)
+    enum CodingKeys: String, CodingKey {
+        case id
+        case task_id
+        case start_time
+        case actual_duration_in_minutes
+    }
 }
 
 // Represents the full state of the application for the UI to render
@@ -55,13 +75,25 @@ struct AppState: Codable {
 
 // Represents a single message in the chat history
 struct ChatMessage: Identifiable, Codable, Hashable {
-    let id = UUID()
+    let id: String
     let text: String
     let sender: Sender
     var isLoading: Bool = false
 
     enum Sender: String, Codable {
         case user, bot
+    }
+    
+    init(text: String, sender: Sender, isLoading: Bool = false) {
+        self.id = UUID().uuidString
+        self.text = text
+        self.sender = sender
+        self.isLoading = isLoading
+    }
+    
+    // Custom encoding to exclude isLoading from API requests
+    enum CodingKeys: String, CodingKey {
+        case id, text, sender
     }
 }
 
