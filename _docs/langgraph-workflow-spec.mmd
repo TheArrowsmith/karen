@@ -1,0 +1,26 @@
+graph TD
+    subgraph "Client (Swift App)"
+        A[UI Interaction]
+    end
+
+    subgraph "API Server (Python/FastAPI)"
+        B("HTTP Endpoint: /process")
+    end
+
+    subgraph "LangGraph Agent"
+        C(planner_node) -- "LLM Call to generate operations" --> D{clarification_router}
+        D -- "Ambiguous" --> F["End & Return Clarification Response (HTTP 422)"]
+        D -- "Clear" --> G(execution_node)
+        G -- "Python logic to run operations" --> H(response_generator_node)
+        H -- "LLM Call to summarize actions" --> I["End & Return Final State (HTTP 200)"]
+    end
+
+    A -- "Sends JSON Request (user_message, current_state)" --> B
+    B -- "Invokes LangGraph Agent with State" --> C
+    I -- "Bundles new_state & chat_response" --> B
+    F -- "Bundles clarification message & unresolved_op" --> B
+    B -- "Sends JSON Response" --> A
+
+    style C fill:#d4e6f1,stroke:#2980b9,stroke-width:2px
+    style H fill:#d4e6f1,stroke:#2980b9,stroke-width:2px
+    style G fill:#d5f5e3,stroke:#229954,stroke-width:2px
