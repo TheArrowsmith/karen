@@ -1,0 +1,22 @@
+graph TD
+    Start([Start]) --> IR["intent_router<br/>Detects user intent using local NLP"]
+    
+    IR -->|"CREATE_TASK"| FR["final_response<br/>Assembles final API response"]
+    IR -->|"DELETE_TASK or TOGGLE_TASK"| FCT["find_candidate_tasks<br/>Semantic search for relevant tasks"]
+    IR -->|"AGENT_FALLBACK or others"| PIM["prepare_initial_messages<br/>Prepares chat history for LLM"]
+    
+    PIM --> FCT
+    
+    FCT -->|"DELETE_TASK or TOGGLE_TASK"| SA["specialized_agent<br/>Lightweight LLM for delete/toggle"]
+    FCT -->|"Others"| A["agent<br/>Main LLM agent for complex tasks"]
+    
+    SA --> FR
+    A --> FR
+    FR --> End([END])
+    
+    style IR fill:#e1f5fe
+    style FCT fill:#fff3e0
+    style SA fill:#f3e5f5
+    style A fill:#e8f5e9
+    style FR fill:#fce4ec
+    style PIM fill:#f5f5f5 

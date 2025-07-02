@@ -7,4 +7,5 @@ openai
 langgraph
 langchain-openai
 scikit-learn
-numpy 
+numpy
+spacy 

@@ -31,6 +31,13 @@ struct karenApp: App {
                 .keyboardShortcut("z", modifiers: [.command, .shift])
                 .disabled(!store.canRedo)
             }
+            
+            CommandMenu("File") {
+                Button("Clear Chat History...") {
+                    store.dispatch(.requestClearChatHistory)
+                }
+                .keyboardShortcut("k", modifiers: [.command, .shift])
+            }
         }
         .onChange(of: scenePhase) { oldPhase, newPhase in
             if newPhase == .background {

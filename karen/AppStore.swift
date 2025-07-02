@@ -8,6 +8,7 @@ typealias AsyncTask = _Concurrency.Task
 class AppStore: ObservableObject {
     @Published private(set) var state: AppState
     @Published var chatLoadingState: ChatLoadingState = .idle // NEW
+    @Published var showClearChatConfirm = false
     
     // Properties for Undo/Redo
     private var undoStack: [AppAction] = []
@@ -144,6 +145,13 @@ class AppStore: ObservableObject {
                     await onRetry()
                 }
             }
+            
+        case .requestClearChatHistory:
+            showClearChatConfirm = true
+            
+        case .confirmClearChatHistory:
+            apply(.clearChatHistory)
+            showClearChatConfirm = false
         }
     }
     
@@ -261,6 +269,11 @@ class AppStore: ObservableObject {
             
         case .showChatbotError(let errorMessage):
             state.chatHistory.append(ChatMessage(text: errorMessage, sender: .bot))
+            
+        case .clearChatHistory:
+            state.chatHistory.removeAll()
+            // Add the initial welcome message back so the UI isn't empty
+            state.chatHistory.append(ChatMessage(text: "Hello! How can I help you plan your day?", sender: .bot))
         }
     }
     
@@ -294,7 +307,7 @@ class AppStore: ObservableObject {
     
     private func isUndoable(_ action: AppAction) -> Bool {
         switch action {
-        case .sendChatMessage, .receiveChatMessage, .showChatbotError:
+        case .sendChatMessage, .receiveChatMessage, .showChatbotError, .clearChatHistory:
             return false
         default:
             return true

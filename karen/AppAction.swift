@@ -15,4 +15,5 @@ enum AppAction {
     case sendChatMessage(ChatMessage)
     case receiveChatMessage(ChatMessage)
     case showChatbotError(String)
+    case clearChatHistory
 } 
