@@ -4,7 +4,7 @@ struct TaskListView: View {
     @EnvironmentObject var store: AppStore
     let onReorderTasks: (IndexSet, Int) -> Void
     
-    @State private var isShowingAddTaskPopover = false
+    @State private var showAddTaskForm = false
     
     var body: some View {
         VStack(spacing: 0) {
@@ -13,7 +13,9 @@ struct TaskListView: View {
                 Text("Tasks")
                     .font(.system(size: 20, weight: .semibold))
                 
-                Button(action: { isShowingAddTaskPopover = true }) {
+                Button(action: { 
+                    showAddTaskForm = true
+                }) {
                     Image(systemName: "plus.circle.fill")
                         .font(.system(size: 18))
                 }
@@ -25,10 +27,14 @@ struct TaskListView: View {
                         NSCursor.pop()
                     }
                 }
-                .popover(isPresented: $isShowingAddTaskPopover, arrowEdge: .bottom) {
-                    AddTaskView(onAddTask: { newTask in
-                        store.dispatch(.createTask(newTask))
-                    }, isPresented: $isShowingAddTaskPopover)
+                .popover(isPresented: $showAddTaskForm, arrowEdge: .bottom) {
+                    TaskFormView(
+                        taskToEdit: nil,
+                        onSave: { task in
+                            store.dispatch(.createTask(task))
+                        },
+                        isPresented: $showAddTaskForm
+                    )
                 }
                 
                 Spacer()
@@ -50,6 +56,9 @@ struct TaskListView: View {
                             },
                             onDeleteTask: { taskToDeleteId in
                                 store.dispatch(.deleteTask(id: taskToDeleteId))
+                            },
+                            onUpdateTask: { taskId, updatedTask in
+                                store.dispatch(.updateTask(id: taskId, updatedTask: updatedTask))
                             }
                         )
                         .listRowInsets(EdgeInsets(top: 0, leading: 0, bottom: 1, trailing: 0))
@@ -79,9 +88,11 @@ struct TaskItemView: View {
     let task: Task
     let onToggleComplete: (String) -> Void
     let onDeleteTask: (String) -> Void
+    let onUpdateTask: (String, Task) -> Void
     
     @State private var isHovering = false
     @State private var showDeleteConfirm = false
+    @State private var showEditForm = false
     
     var priorityColor: Color {
         switch task.priority {
@@ -161,6 +172,18 @@ struct TaskItemView: View {
         .padding(.horizontal, 20)
         .background(Color(NSColor.controlBackgroundColor).opacity(0.5))
         .contentShape(Rectangle())
+        .onTapGesture {
+            showEditForm = true
+        }
+        .popover(isPresented: $showEditForm, arrowEdge: .leading) {
+            TaskFormView(
+                taskToEdit: task,
+                onSave: { updatedTask in
+                    onUpdateTask(task.id, updatedTask)
+                },
+                isPresented: $showEditForm
+            )
+        }
         .overlay(alignment: .topTrailing) {
             if isHovering {
                 Button(action: { showDeleteConfirm = true }) {
