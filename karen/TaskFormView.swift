@@ -1,31 +1,89 @@
 import SwiftUI
 
-struct AddTaskView: View {
-    // Callback to pass the created task up to the parent view
-    let onAddTask: (Task) -> Void
-    // Binding to control the popover's visibility
+struct TaskFormView: View {
+    // MARK: - Properties
+    
+    // The mode determines if the form is for adding or editing a task.
+    private var mode: Mode
+    
+    // Callback to pass the created or updated task up to the parent view.
+    let onSave: (Task) -> Void
+    
+    // Binding to control the popover's visibility.
     @Binding var isPresented: Bool
 
-    // Local state for all form fields
+    // A copy of the original task in edit mode, used to detect changes.
+    @State private var originalTask: Task?
+    
+    // Local state for all form fields.
     @State private var title: String = ""
     @State private var description: String = ""
     @State private var priority: Priority? = nil
     @State private var durationAmount: String = "30"
     @State private var durationUnit: DurationUnit = .minutes
-    @State private var deadline: Date = Date().addingTimeInterval(3600) // Default to 1 hour from now
+    @State private var deadline: Date = Date().addingTimeInterval(3600)
+
+    // State to manage the "discard changes" confirmation alert.
+    @State private var showCancelConfirm = false
+    
+    enum Mode {
+        case add, edit
+    }
 
     enum DurationUnit: String, CaseIterable {
         case minutes, hours
     }
     
-    // Computed property to check if the form is valid for submission
+    init(taskToEdit: Task? = nil, onSave: @escaping (Task) -> Void, isPresented: Binding<Bool>) {
+        self.mode = (taskToEdit == nil) ? .add : .edit
+        self.onSave = onSave
+        self._isPresented = isPresented
+        
+        // If a task is passed, we are in "edit" mode.
+        if let task = taskToEdit {
+            // Store the original task to compare against for changes.
+            _originalTask = State(initialValue: task)
+            
+            // Pre-populate the form fields with the task's data.
+            _title = State(initialValue: task.title)
+            _description = State(initialValue: task.description ?? "")
+            _priority = State(initialValue: task.priority)
+            _deadline = State(initialValue: task.deadline ?? Date().addingTimeInterval(3600))
+            
+            if let duration = task.predicted_duration_in_minutes {
+                if duration >= 60 && duration % 60 == 0 {
+                    _durationAmount = State(initialValue: "\(duration / 60)")
+                    _durationUnit = State(initialValue: .hours)
+                } else {
+                    _durationAmount = State(initialValue: "\(duration)")
+                    _durationUnit = State(initialValue: .minutes)
+                }
+            }
+        }
+    }
+    
+    // Computed property to check if the form is valid for submission.
     private var isFormValid: Bool {
         !title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+    }
+    
+    // Computed property to check if any data has been changed in edit mode.
+    private var hasChanges: Bool {
+        guard mode == .edit, let original = originalTask else { return false }
+        
+        // This is a simplified check. A more robust check would handle dates and numbers more carefully.
+        let currentDuration = (Int(durationAmount) ?? 0) * (durationUnit == .hours ? 60 : 1)
+        
+        return title != original.title ||
+               description != (original.description ?? "") ||
+               priority != original.priority ||
+               currentDuration != (original.predicted_duration_in_minutes ?? 0) ||
+               !Calendar.current.isDate(deadline, inSameDayAs: original.deadline ?? Date.distantPast)
     }
 
     var body: some View {
         VStack(spacing: 20) {
-            Text("Add New Task")
+            Text(mode == .add ? "Add New Task" : "Edit Task")
                 .font(.title2)
                 .fontWeight(.semibold)
             
@@ -89,19 +147,35 @@ struct AddTaskView: View {
             
             HStack {
                 Button("Cancel") {
-                    isPresented = false
+                    handleCancel()
                 }
                 .keyboardShortcut(.escape)
                 
                 Spacer()
                 
-                Button("Add Task", action: submitTask)
-                    .disabled(!isFormValid)
+                Button(mode == .add ? "Add Task" : "Save Changes", action: submitTask)
+                    .disabled(!isFormValid || (mode == .edit && !hasChanges))
                     .keyboardShortcut(.return, modifiers: [])
             }
         }
         .padding(20)
         .frame(width: 350)
+        .alert("Discard Changes?", isPresented: $showCancelConfirm, actions: {
+            Button("Discard", role: .destructive) {
+                isPresented = false
+            }
+            Button("Cancel", role: .cancel) { }
+        }, message: {
+            Text("You have unsaved changes. Are you sure you want to discard them?")
+        })
+    }
+    
+    private func handleCancel() {
+        if mode == .edit && hasChanges {
+            showCancelConfirm = true
+        } else {
+            isPresented = false
+        }
     }
     
     private func submitTask() {
@@ -115,16 +189,20 @@ struct AddTaskView: View {
             totalMinutes = durationValue * 60
         }
         
-        let newTask = Task(
+        let task = Task(
+            // If editing, use the original ID. If adding, a new ID is generated by the initializer.
+            id: originalTask?.id,
             title: title.trimmingCharacters(in: .whitespacesAndNewlines),
             description: description.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? nil : description.trimmingCharacters(in: .whitespacesAndNewlines),
-            is_completed: false,
+            is_completed: originalTask?.is_completed ?? false, // Preserve completion state
             priority: priority,
+            // Preserve original creation date when editing
+            creation_date: originalTask?.creation_date ?? Date(),
             deadline: deadline,
             predicted_duration_in_minutes: totalMinutes
         )
         
-        onAddTask(newTask)
+        onSave(task)
         isPresented = false
     }
 } 
