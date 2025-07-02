@@ -168,15 +168,20 @@ struct DayColumnView: View {
                 ZStack(alignment: .topLeading) {
                     HourlyGridView(hourHeight: hourHeight)
                     
-                    ForEach(timeBlockGeometries, id: \.block.id) { item in
-                        TimeBlockView(
-                            block: item.block,
-                            geometry: item.geometry,
-                            taskTitle: tasks.first(where: { $0.id == item.block.task_id })?.title ?? "Untitled",
-                            hourHeight: hourHeight,
-                            xOffset: 50 // Daily view has hour labels, so offset more
-                        )
+                    // FIX: Wrap blocks in a container and pad it to align with the grid.
+                    // This prevents the blocks from overflowing the view.
+                    VStack(alignment: .leading, spacing: 0) {
+                        ForEach(timeBlockGeometries, id: \.block.id) { item in
+                            TimeBlockView(
+                                block: item.block,
+                                geometry: item.geometry,
+                                taskTitle: tasks.first(where: { $0.id == item.block.task_id })?.title ?? "Untitled",
+                                hourHeight: hourHeight
+                            )
+                        }
                     }
+                    .padding(.leading, 50) // Indent to align right of hour labels.
+                    .padding(.trailing, 10) // Prevent touching the scrollbar/edge.
                 }
                 .frame(minHeight: hourHeight * 24)
             }
@@ -280,13 +285,14 @@ struct WeeklyDayColumnView: View {
                 }
             }
             
+            // FIX: The internal padding of TimeBlockView now handles alignment.
+            // No offset is needed.
             ForEach(timeBlockGeometries, id: \.block.id) { item in
                 TimeBlockView(
                     block: item.block,
                     geometry: item.geometry,
                     taskTitle: tasks.first(where: { $0.id == item.block.task_id })?.title ?? "Untitled",
-                    hourHeight: hourHeight,
-                    xOffset: 10 // Weekly view has no hour labels in columns, so less offset
+                    hourHeight: hourHeight
                 )
             }
         }

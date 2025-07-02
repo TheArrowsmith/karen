@@ -2,10 +2,9 @@ import SwiftUI
 
 struct TimeBlockView: View {
     let block: TimeBlock
-    let geometry: BlockGeometry // New property to accept pre-calculated geometry
+    let geometry: BlockGeometry // Pre-calculated geometry
     let taskTitle: String
     let hourHeight: CGFloat
-    let xOffset: CGFloat
 
     var body: some View {
         ZStack(alignment: .topLeading) {
@@ -26,8 +25,8 @@ struct TimeBlockView: View {
             .padding(.vertical, 4)
         }
         .frame(height: geometry.height)
-        .offset(x: xOffset, y: geometry.yOffset) // Use the passed-in geometry
-        .padding(.trailing, 10) // Give it some breathing room from the next column
+        .padding(.horizontal, 5)
+        .offset(y: geometry.yOffset)
     }
     
     private var timeRangeText: String {
