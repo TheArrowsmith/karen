@@ -2,6 +2,10 @@
 
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
+import uvicorn
+import os
+import sys
+import atexit
 
 from models import AppState, ApiResponse
 from graph import run_graph
@@ -50,3 +54,31 @@ def process_chat_message(app_state: AppState):
 
 # To run the server, execute the following command in your terminal:
 # uvicorn main:app --reload 
+
+if __name__ == "__main__":
+    # Use the exact same path as the sandboxed Swift app
+    import os
+    home = os.path.expanduser("~")
+    # This is the containerized cache directory for the sandboxed app
+    SOCKET_PATH = os.path.join(home, "Library/Containers/com.arrowsmithlabs.karen/Data/Library/Caches/karen_dev.sock")
+    
+    # Ensure the directory exists
+    socket_dir = os.path.dirname(SOCKET_PATH)
+    os.makedirs(socket_dir, exist_ok=True)
+    
+    # 2. Define a cleanup function to remove the socket file when the server stops.
+    #    This is critical to prevent errors on the next launch if the server crashes.
+    def cleanup():
+        print(f"\nCleaning up socket file at {SOCKET_PATH}")
+        if os.path.exists(SOCKET_PATH):
+            os.remove(SOCKET_PATH)
+    
+    # 3. Register the cleanup function to run automatically on process exit.
+    atexit.register(cleanup)
+    
+    print(f"🚀 Starting server on UNIX Domain Socket: {SOCKET_PATH}")
+    print("   Press CTRL+C to stop.")
+
+    # 4. Run the Uvicorn server, telling it to listen on the socket path (`uds`)
+    #    instead of a host and port.
+    uvicorn.run(app, uds=SOCKET_PATH) 
