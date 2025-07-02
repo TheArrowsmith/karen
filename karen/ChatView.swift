@@ -59,39 +59,76 @@ struct ChatView: View {
     }
     
     private func sendMessage() {
-        guard !inputText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return }
+        let trimmedText = inputText.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmedText.isEmpty else { return }
         guard !loadingState.isLoading else { return } // Don't send if loading
-        onSendMessage(inputText)
+        onSendMessage(trimmedText)
         inputText = ""
     }
 }
 
 struct ChatInputView: View {
     @Binding var text: String
-    let isLoading: Bool // NEW
+    let isLoading: Bool
     let onSend: () -> Void
     @FocusState private var isTextFieldFocused: Bool
 
+    // Define a max height to prevent the text editor from growing indefinitely
+    private let maxHeight: CGFloat = 150
+
     var body: some View {
-        HStack(spacing: 12) {
-            // Use default TextField style which properly supports all keyboard shortcuts
-            TextField("Type your message...", text: $text)
-                .textFieldStyle(.automatic) // Use automatic style for proper system behavior
-                .font(.system(size: 14))
-                .focused($isTextFieldFocused)
-                .onSubmit {
-                    if !isLoading {
-                        onSend()
-                    }
+        // Align items to the bottom so the send button stays put as the editor grows
+        HStack(alignment: .bottom, spacing: 12) {
+            // We wrap the TextEditor in a ZStack to add a placeholder
+            ZStack(alignment: .leading) {
+                // Show placeholder text when the input is empty
+                if text.isEmpty {
+                    Text("Type your message...")
+                        .font(.system(size: 14))
+                        .foregroundColor(.gray.opacity(0.6))
+                        .padding(.leading, 5)
+                        .padding(.vertical, 8)
                 }
-            
+                
+                TextEditor(text: $text)
+                    .font(.system(size: 14))
+                    .focused($isTextFieldFocused)
+                    // Set a max height and allow it to grow vertically to fit content
+                    .frame(maxHeight: maxHeight)
+                    .fixedSize(horizontal: false, vertical: true)
+                    // Adjust padding and remove the default background
+                    .padding(EdgeInsets(top: 0, leading: -5, bottom: 0, trailing: -5))
+                    .scrollContentBackground(.hidden)
+                    .background(Color.clear)
+                    .onChange(of: text) { oldValue, newValue in
+                        // This is the core logic for custom Enter key behavior
+                        guard newValue.hasSuffix("\n") else { return }
+                        
+                        let isShiftPressed = NSEvent.modifierFlags.contains(.shift)
+                        
+                        if !isShiftPressed {
+                            // If user pressed Enter without Shift, send the message
+                            text = String(newValue.dropLast()) // Remove the newline character
+                            onSend()
+                        }
+                    }
+            }
+            .padding(.vertical, 8)
+            .padding(.horizontal, 12)
+            .background(Color(NSColor.textBackgroundColor))
+            .cornerRadius(8)
+            .overlay(
+                RoundedRectangle(cornerRadius: 8)
+                    .stroke(isTextFieldFocused ? Color.accentColor : Color.gray.opacity(0.3), lineWidth: 1)
+            )
+
             Button(action: onSend) {
                 Image(systemName: "arrow.up.circle.fill")
                     .font(.system(size: 24))
-                    .foregroundColor(isLoading ? .gray : .blue) // Update color
+                    .foregroundColor(isLoading || text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? .gray : .blue)
             }
             .buttonStyle(PlainButtonStyle())
-            .disabled(text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || isLoading) // Update disabled condition
+            .disabled(text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || isLoading)
             .onHover { isHovering in
                 let shouldShowPointer = !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && !isLoading
                 if isHovering && shouldShowPointer {
@@ -100,13 +137,12 @@ struct ChatInputView: View {
                     NSCursor.pop()
                 }
             }
-            .keyboardShortcut(.return, modifiers: []) // Allow Enter key to send
+            // The .keyboardShortcut modifier on the button is no longer needed
         }
         .padding(.horizontal, 20)
         .padding(.vertical, 12)
         .background(Color(NSColor.controlBackgroundColor))
         .onAppear {
-            // Ensure the text field gets focus when view appears
             isTextFieldFocused = true
         }
     }
