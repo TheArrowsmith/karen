@@ -39,6 +39,23 @@ struct karenApp: App {
                 }
                 .keyboardShortcut("k", modifiers: [.command, .shift])
             }
+            
+            CommandGroup(after: .newItem) {
+                Button("Next Day/Week", action: {
+                    NotificationCenter.default.post(name: .navigateCalendar, object: CalendarNavigationDirection.next)
+                })
+                .keyboardShortcut(.rightArrow, modifiers: .command)
+                
+                Button("Previous Day/Week", action: {
+                    NotificationCenter.default.post(name: .navigateCalendar, object: CalendarNavigationDirection.previous)
+                })
+                .keyboardShortcut(.leftArrow, modifiers: .command)
+                
+                Button("Go to Today", action: {
+                    NotificationCenter.default.post(name: .navigateCalendar, object: CalendarNavigationDirection.today)
+                })
+                .keyboardShortcut("t", modifiers: .command)
+            }
         }
         .onChange(of: scenePhase) { oldPhase, newPhase in
             if newPhase == .background {
