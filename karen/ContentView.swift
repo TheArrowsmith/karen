@@ -54,6 +54,14 @@ struct ContentView: View {
         } message: { message in
             Text(message)
         }
+        .alert("Are you sure?", isPresented: $store.showClearChatConfirm, actions: {
+            Button("Clear History", role: .destructive) {
+                store.dispatch(.confirmClearChatHistory)
+            }
+            Button("Cancel", role: .cancel) {}
+        }, message: {
+            Text("This will permanently delete your entire chat history. This action cannot be undone.")
+        })
     }
 }
 
