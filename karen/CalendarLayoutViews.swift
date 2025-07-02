@@ -55,26 +55,29 @@ struct WeeklyView: View {
                     Divider()
                 }
             }
+            .padding(.trailing, 15) // Account for scrollbar width
+            .fixedSize(horizontal: false, vertical: true) // Prevent vertical expansion
             
             Divider()
             
             // Single scrollable area for all days
             ScrollView {
                 HStack(spacing: 0) {
-                    // Hour labels on the left
+                    // FIX: Replace the hour labels VStack to give it a fixed width
+                    // and correctly align its content. This aligns the columns.
                     VStack(spacing: 0) {
                         ForEach(0..<24, id: \.self) { hour in
                             HStack {
+                                Spacer()
                                 Text(hourText(for: hour))
                                     .font(.system(size: 11))
                                     .foregroundColor(.secondary)
-                                    .frame(width: 40, alignment: .trailing)
-                                Spacer()
                             }
+                            .padding(.trailing, 5) // Keep text from hitting the divider
                             .frame(height: hourHeight)
                         }
                     }
-                    .padding(.leading, 5)
+                    .frame(width: 50) // Fix the column width to match the header spacer
                     
                     // Day columns
                     ForEach(weekDays, id: \.self) { day in
@@ -217,7 +220,9 @@ struct DayHeaderView: View {
                 .clipShape(Circle())
                 .foregroundColor(isToday ? .white : .primary)
         }
-        .frame(maxWidth: .infinity, maxHeight: 30)
+        // FIX: Use adaptive padding for height and let it expand horizontally.
+        .padding(.vertical, 8)
+        .frame(maxWidth: .infinity)
     }
 }
 
