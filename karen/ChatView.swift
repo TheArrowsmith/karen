@@ -73,47 +73,44 @@ struct ChatInputView: View {
     let onSend: () -> Void
     @FocusState private var isTextFieldFocused: Bool
 
-    // Define a max height to prevent the text editor from growing indefinitely
     private let maxHeight: CGFloat = 150
 
     var body: some View {
-        // Align items to the bottom so the send button stays put as the editor grows
         HStack(alignment: .bottom, spacing: 12) {
-            // We wrap the TextEditor in a ZStack to add a placeholder
-            ZStack(alignment: .leading) {
-                // Show placeholder text when the input is empty
+            // This ZStack is our complete input field component
+            ZStack(alignment: .topLeading) {
+                // The placeholder is shown when text is empty
                 if text.isEmpty {
                     Text("Type your message...")
                         .font(.system(size: 14))
                         .foregroundColor(.gray.opacity(0.6))
-                        .padding(.leading, 5)
+                        .padding(.leading, 5) // Nudge to align with TextEditor's content
                         .padding(.vertical, 8)
                 }
-                
+
                 TextEditor(text: $text)
                     .font(.system(size: 14))
                     .focused($isTextFieldFocused)
-                    // Set a max height and allow it to grow vertically to fit content
-                    .frame(maxHeight: maxHeight)
-                    .fixedSize(horizontal: false, vertical: true)
-                    // Adjust padding and remove the default background
-                    .padding(EdgeInsets(top: 0, leading: -5, bottom: 0, trailing: -5))
                     .scrollContentBackground(.hidden)
+                    .scrollIndicators(.hidden)
                     .background(Color.clear)
+                    .frame(maxHeight: maxHeight) // Allow growth up to a limit
                     .onChange(of: text) { oldValue, newValue in
-                        // This is the core logic for custom Enter key behavior
                         guard newValue.hasSuffix("\n") else { return }
-                        
                         let isShiftPressed = NSEvent.modifierFlags.contains(.shift)
-                        
                         if !isShiftPressed {
-                            // If user pressed Enter without Shift, send the message
-                            text = String(newValue.dropLast()) // Remove the newline character
+                            text = String(newValue.dropLast())
                             onSend()
                         }
                     }
+                    // The TextEditor itself needs some padding to match the placeholder
+                    .padding(.vertical, 8)
             }
-            .padding(.vertical, 8)
+            // --- This is the key change ---
+            // Apply fixedSize to the container ZStack. This tells the parent HStack
+            // that our input field's height should be determined by its content,
+            // not by the available space. This solves the "huge input" problem.
+            .fixedSize(horizontal: false, vertical: true)
             .padding(.horizontal, 12)
             .background(Color(NSColor.textBackgroundColor))
             .cornerRadius(8)
@@ -137,7 +134,6 @@ struct ChatInputView: View {
                     NSCursor.pop()
                 }
             }
-            // The .keyboardShortcut modifier on the button is no longer needed
         }
         .padding(.horizontal, 20)
         .padding(.vertical, 12)
