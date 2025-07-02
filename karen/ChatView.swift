@@ -60,6 +60,7 @@ struct ChatView: View {
     
     private func sendMessage() {
         guard !inputText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return }
+        guard !loadingState.isLoading else { return } // Don't send if loading
         onSendMessage(inputText)
         inputText = ""
     }
@@ -79,7 +80,9 @@ struct ChatInputView: View {
                 .font(.system(size: 14))
                 .focused($isTextFieldFocused)
                 .onSubmit {
-                    onSend()
+                    if !isLoading {
+                        onSend()
+                    }
                 }
             
             Button(action: onSend) {

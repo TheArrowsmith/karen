@@ -32,7 +32,8 @@ struct karenApp: App {
                 .disabled(!store.canRedo)
             }
             
-            CommandMenu("File") {
+            CommandGroup(after: .newItem) {
+                Divider()
                 Button("Clear Chat History...") {
                     store.dispatch(.requestClearChatHistory)
                 }
