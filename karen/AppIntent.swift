@@ -15,4 +15,6 @@ enum AppIntent {
     // Chat Intents
     case sendChatMessage(text: String)
     case retryLastChatMessage // NEW
+    case requestClearChatHistory
+    case confirmClearChatHistory
 } 

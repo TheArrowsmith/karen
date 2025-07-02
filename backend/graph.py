@@ -11,6 +11,7 @@ from langgraph.graph import StateGraph, END
 from sklearn.metrics.pairwise import cosine_similarity
 
 from models import AppState, Task, ApiResponse, ChatMessage
+from intent_router import run_intent_router
 
 # Load environment variables from .env file
 load_dotenv()
@@ -28,6 +29,8 @@ class GraphState(TypedDict):
     chat_response: str
     # The list of actions for the frontend
     actions: List[Dict[str, Any]]
+    # The intent detected by the local NLP router
+    detected_intent: str
 
 
 # --- 2. Define the Tools and the Agent ---
@@ -268,20 +271,159 @@ def final_response_node(state: GraphState) -> GraphState:
     # This node doesn't do much now, but is a good placeholder for future final logic.
     return state
 
+def intent_router_node(state: GraphState) -> GraphState:
+    """The new router node. It runs first to see if it can handle the request locally."""
+    user_query = state["app_state"].chatHistory[-1].text
+    router_result = run_intent_router(user_query)
+    
+    intent = router_result["intent"]
+    state['detected_intent'] = intent
+    
+    if intent == "CREATE_TASK":
+        # Tier 1: Full shortcut. The router handled everything.
+        print(f"Router: Create - Pattern matched for '{user_query}'")
+        state["chat_response"] = router_result["response"]
+        state["actions"] = router_result["payload"]
+    else:
+        # Log the routing decision
+        print(f"Router: {intent} - For query '{user_query}'")
+    
+    return state
+
+def specialized_agent_node(state: GraphState) -> GraphState:
+    """A specialized, lightweight agent for DELETE and TOGGLE intents."""
+    import json
+    
+    intent = state["detected_intent"]
+    user_query = state["app_state"].chatHistory[-1].text
+    candidate_tasks = state.get("candidate_tasks", [])
+    
+    if not candidate_tasks:
+        state["chat_response"] = "I couldn't find any tasks matching your request."
+        state["actions"] = []
+        return state
+    
+    # Create a focused prompt for the specific intent
+    if intent == "DELETE_TASK":
+        task_list = "\n".join([f"- ID: {t.id}, Title: '{t.title}'" for t in candidate_tasks])
+        prompt = f"""
+User wants to delete a task with this query: "{user_query}"
+
+These are the candidate tasks:
+{task_list}
+
+Return JSON with the ID of the task to delete:
+{{"task_id": "the-correct-task-id"}}
+
+If none match, return: {{"task_id": null}}
+"""
+    else:  # TOGGLE_TASK
+        task_list = "\n".join([f"- ID: {t.id}, Title: '{t.title}', Completed: {t.is_completed}" for t in candidate_tasks])
+        prompt = f"""
+User wants to toggle completion of a task with this query: "{user_query}"
+
+These are the candidate tasks:
+{task_list}
+
+Return JSON with the ID of the task to toggle:
+{{"task_id": "the-correct-task-id"}}
+
+If none match, return: {{"task_id": null}}
+"""
+    
+    # Make a lightweight LLM call
+    response = llm_json.invoke([HumanMessage(content=prompt)])
+    
+    try:
+        result = json.loads(response.content)
+        task_id = result.get("task_id")
+        
+        if task_id:
+            # Find the task title for the response message
+            task_title = next((t.title for t in candidate_tasks if t.id == task_id), "the task")
+            
+            if intent == "DELETE_TASK":
+                state["chat_response"] = f"OK, I've deleted '{task_title}' from your list."
+                state["actions"] = [{"action_type": "deleteTask", "payload": {"id": task_id}}]
+            else:  # TOGGLE_TASK
+                state["chat_response"] = f"OK, I've toggled the completion status of '{task_title}'."
+                state["actions"] = [{"action_type": "toggleTaskCompletion", "payload": {"id": task_id}}]
+        else:
+            state["chat_response"] = "I couldn't find a task matching your request. Could you be more specific?"
+            state["actions"] = []
+            
+    except (json.JSONDecodeError, KeyError) as e:
+        print(f"Error in specialized agent: {e}")
+        state["chat_response"] = "I had trouble understanding which task you meant. Could you be more specific?"
+        state["actions"] = []
+    
+    return state
+
 
 # --- 4. Wire up the graph ---
 
+# Define the routing logic
+def route_after_intent(state: GraphState) -> str:
+    """Decides which node to go to after the intent router."""
+    intent = state.get("detected_intent", "AGENT_FALLBACK")
+    
+    if intent == "CREATE_TASK":
+        # Full shortcut - go straight to final response
+        return "final_response"
+    elif intent in ["DELETE_TASK", "TOGGLE_TASK"]:
+        # Partial shortcut - find candidates then use specialized agent
+        return "find_candidate_tasks"
+    else:
+        # Fallback - use the full agent path
+        return "prepare_initial_messages"
+
+def route_after_find_candidates(state: GraphState) -> str:
+    """Decides which agent to use after finding candidates."""
+    intent = state.get("detected_intent", "AGENT_FALLBACK")
+    
+    if intent in ["DELETE_TASK", "TOGGLE_TASK"]:
+        return "specialized_agent"
+    else:
+        return "agent"
+
 workflow = StateGraph(GraphState)
 
+# Add all nodes
+workflow.add_node("intent_router", intent_router_node)
 workflow.add_node("prepare_initial_messages", prepare_initial_messages)
 workflow.add_node("find_candidate_tasks", find_candidate_tasks_node)
 workflow.add_node("agent", agent_node)
+workflow.add_node("specialized_agent", specialized_agent_node)
 workflow.add_node("final_response", final_response_node)
 
-workflow.set_entry_point("prepare_initial_messages")
+# Set the router as the entry point
+workflow.set_entry_point("intent_router")
+
+# Add conditional routing after the intent router
+workflow.add_conditional_edges(
+    "intent_router",
+    route_after_intent,
+    {
+        "final_response": "final_response",
+        "find_candidate_tasks": "find_candidate_tasks",
+        "prepare_initial_messages": "prepare_initial_messages"
+    }
+)
+
+# Add conditional routing after finding candidates
+workflow.add_conditional_edges(
+    "find_candidate_tasks",
+    route_after_find_candidates,
+    {
+        "specialized_agent": "specialized_agent",
+        "agent": "agent"
+    }
+)
+
+# Add regular edges
 workflow.add_edge("prepare_initial_messages", "find_candidate_tasks")
-workflow.add_edge("find_candidate_tasks", "agent")
 workflow.add_edge("agent", "final_response")
+workflow.add_edge("specialized_agent", "final_response")
 workflow.add_edge("final_response", END)
 
 # Compile the graph into a runnable object
@@ -291,7 +433,14 @@ app = workflow.compile()
 # --- 5. Create a simple runner function ---
 def run_graph(app_state: AppState) -> ApiResponse:
     """Runs the graph and returns the final API response."""
-    initial_state = {"app_state": app_state}
+    initial_state: GraphState = {
+        "app_state": app_state,
+        "messages": [],
+        "candidate_tasks": None,
+        "chat_response": "",
+        "actions": [],
+        "detected_intent": ""
+    }
     final_state = app.invoke(initial_state)
     return ApiResponse(
         chat_response=final_state["chat_response"],
