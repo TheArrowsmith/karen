@@ -1,7 +1,6 @@
 # main.py
 
 from fastapi import FastAPI, HTTPException
-from fastapi.middleware.cors import CORSMiddleware
 import uvicorn
 import os
 import sys
@@ -15,16 +14,6 @@ app = FastAPI(
     title="Task Management Chatbot Backend",
     description="API for processing user chat messages and returning actions.",
     version="1.0.0"
-)
-
-# Configure CORS (Cross-Origin Resource Sharing)
-# This allows our frontend (on a different domain) to communicate with this backend.
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["*"],  # In production, restrict this to your frontend's domain
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
 )
 
 @app.get("/", tags=["Health Check"])
@@ -52,8 +41,8 @@ def process_chat_message(app_state: AppState):
         print(f"An error occurred: {e}")
         raise HTTPException(status_code=500, detail="An internal error occurred while processing the request.")
 
-# To run the server, execute the following command in your terminal:
-# uvicorn main:app --reload 
+# To run the server using Unix domain sockets:
+# python main.py
 
 if __name__ == "__main__":
     # Use the exact same path as the sandboxed Swift app
