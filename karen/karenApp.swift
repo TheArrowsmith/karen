@@ -11,6 +11,10 @@ import SwiftUI
 struct karenApp: App {
     @StateObject private var store = AppStore(initialState: AppStore.load())
     @Environment(\.scenePhase) private var scenePhase
+    
+    init() {
+        BackendProcess.shared.start()
+    }
 
     var body: some Scene {
         WindowGroup {
@@ -60,6 +64,9 @@ struct karenApp: App {
         .onChange(of: scenePhase) { oldPhase, newPhase in
             if newPhase == .background {
                 store.save()
+            }
+            if newPhase == .inactive {
+                BackendProcess.shared.stop()
             }
         }
     }
