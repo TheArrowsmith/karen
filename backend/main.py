@@ -1,6 +1,7 @@
 # main.py
 
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Header
+from typing import Annotated, Optional
 import uvicorn
 import os
 import sys
@@ -23,18 +24,32 @@ def read_root():
 
 
 @app.post("/api/chat", response_model=ApiResponse, tags=["Chat"])
-def process_chat_message(app_state: AppState):
+def process_chat_message(
+    app_state: AppState,
+    authorization: Annotated[Optional[str], Header()] = None
+):
     """
     Receives the full application state (tasks and chat history),
     processes the latest user message through the LangGraph workflow,
     and returns a conversational response and a list of actions.
+    The OpenAI API key must be provided in the 'Authorization' header.
     """
+    if not authorization or not authorization.startswith("Bearer "):
+        raise HTTPException(
+            status_code=401,
+            detail="Authorization header with Bearer token is required."
+        )
+    
+    api_key = authorization.split("Bearer ")[1]
+    if not api_key:
+        raise HTTPException(status_code=401, detail="Invalid API key provided.")
+
     if not app_state.chatHistory:
         raise HTTPException(status_code=400, detail="Chat history cannot be empty.")
     
     try:
-        # Run the main logic graph
-        api_response = run_graph(app_state)
+        # Pass the extracted API key to the graph runner
+        api_response = run_graph(app_state, api_key)
         return api_response
     except Exception as e:
         # Basic error handling for any unexpected issues in the graph

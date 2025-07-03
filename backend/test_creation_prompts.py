@@ -82,7 +82,7 @@ def create_test_method(prompt_text):
         )
 
         # Run the graph
-        response = run_graph(app_state)
+        response = run_graph(app_state, OPENAI_API_KEY or "")
         
         # Primary Assertion: at least one action was created
         self.assertGreaterEqual(len(response.actions), 1, 
