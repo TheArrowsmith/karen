@@ -10,6 +10,9 @@ struct TimeBlockView: View {
     let onDelete: (String) -> Void
 
     @State private var isHovering = false
+    
+    // Minimum height needed to show both title and time range
+    private let minHeightForTimeRange: CGFloat = 40
 
     var body: some View {
         ZStack(alignment: .topLeading) {
@@ -23,9 +26,12 @@ struct TimeBlockView: View {
                     .lineLimit(1)
                     .strikethrough(isCompleted)
                 
-                Text(timeRangeText)
-                    .font(.system(size: 10))
-                    .foregroundColor(.white.opacity(0.9))
+                // Only show time range if there's enough vertical space
+                if geometry.height >= minHeightForTimeRange {
+                    Text(timeRangeText)
+                        .font(.system(size: 10))
+                        .foregroundColor(.white.opacity(0.9))
+                }
             }
             .padding(.horizontal, 6)
             .padding(.vertical, 4)
