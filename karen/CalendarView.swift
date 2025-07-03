@@ -7,7 +7,7 @@ enum CalendarViewMode {
 struct CalendarView: View {
     @EnvironmentObject var store: AppStore // NEW
     // These are transient UI states, not part of the global AppState
-    @State private var viewMode: CalendarViewMode = .daily
+    @State private var viewMode: CalendarViewMode = .weekly
     @State private var currentDate: Date = Date()
     
     // Passed in from ContentView
