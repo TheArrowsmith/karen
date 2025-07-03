@@ -3,13 +3,15 @@ import SwiftUI
 struct TimeBlockView: View {
     let block: TimeBlock
     let geometry: BlockGeometry // Pre-calculated geometry
-    let taskTitle: String
+    let task: Task?
+    let allTimeBlocks: [TimeBlock]
     let hourHeight: CGFloat
-    let isCompleted: Bool
     let onToggleComplete: (String) -> Void
+    let onUpdate: (String, Date, Int) -> Void
     let onDelete: (String) -> Void
 
     @State private var isHovering = false
+    @State private var showEditForm = false
     
     // Minimum height needed to show both title and time range
     private let minHeightForTimeRange: CGFloat = 40
@@ -20,11 +22,11 @@ struct TimeBlockView: View {
                 .fill(Color.blue.opacity(0.8))
             
             VStack(alignment: .leading, spacing: 2) {
-                Text(taskTitle)
+                Text(task?.title ?? "Untitled Task")
                     .font(.system(size: 12, weight: .semibold))
                     .foregroundColor(.white)
                     .lineLimit(1)
-                    .strikethrough(isCompleted)
+                    .strikethrough(task?.is_completed ?? false)
                 
                 // Only show time range if there's enough vertical space
                 if geometry.height >= minHeightForTimeRange {
@@ -40,7 +42,7 @@ struct TimeBlockView: View {
             
             // Checkbox overlay in top left
             Button(action: { onToggleComplete(block.task_id) }) {
-                Image(systemName: isCompleted ? "checkmark.square.fill" : "square")
+                Image(systemName: (task?.is_completed ?? false) ? "checkmark.square.fill" : "square")
                     .foregroundColor(.white)
                     .font(.system(size: 14))
             }
@@ -52,6 +54,14 @@ struct TimeBlockView: View {
             if isHovering {
                 HStack {
                     Spacer()
+                    Button(action: { showEditForm = true }) {
+                        Image(systemName: "pencil")
+                            .foregroundColor(.white.opacity(0.9))
+                            .font(.system(size: 14))
+                    }
+                    .buttonStyle(PlainButtonStyle())
+                    .help("Edit time block")
+                    
                     Button(action: { onDelete(block.id) }) {
                         Image(systemName: "xmark.circle.fill")
                             .foregroundColor(.white.opacity(0.9))
@@ -76,6 +86,17 @@ struct TimeBlockView: View {
         .offset(y: geometry.yOffset)
         .onHover { hovering in
             isHovering = hovering
+        }
+        .popover(isPresented: $showEditForm, arrowEdge: .trailing) {
+            if let task = task {
+                TimeBlockFormView(
+                    timeBlock: block,
+                    associatedTask: task,
+                    allOtherTimeBlocks: allTimeBlocks.filter { $0.id != block.id },
+                    onSave: onUpdate,
+                    isPresented: $showEditForm
+                )
+            }
         }
     }
     

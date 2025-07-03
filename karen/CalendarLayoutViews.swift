@@ -6,12 +6,13 @@ struct DailyView: View {
     let timeBlocks: [TimeBlock]
     let tasks: [Task]
     let onToggleComplete: (String) -> Void
+    let onUpdateTimeBlock: (String, Date, Int) -> Void
     let onDeleteTimeBlock: (String) -> Void
 
     var body: some View {
         HStack(spacing: 0) {
             // A single column for the selected day
-            DayColumnView(day: date, timeBlocks: timeBlocks, tasks: tasks, isToday: Calendar.current.isDateInToday(date), onToggleComplete: onToggleComplete, onDeleteTimeBlock: onDeleteTimeBlock)
+            DayColumnView(day: date, timeBlocks: timeBlocks, tasks: tasks, isToday: Calendar.current.isDateInToday(date), onToggleComplete: onToggleComplete, onUpdateDate: onUpdateTimeBlock, onDeleteTimeBlock: onDeleteTimeBlock)
         }
     }
 }
@@ -22,6 +23,7 @@ struct WeeklyView: View {
     let timeBlocks: [TimeBlock]
     let tasks: [Task]
     let onToggleComplete: (String) -> Void
+    let onUpdateTimeBlock: (String, Date, Int) -> Void
     let onDeleteTimeBlock: (String) -> Void
     
     private let hourHeight: CGFloat = 60.0
@@ -85,7 +87,7 @@ struct WeeklyView: View {
                     
                     // Day columns
                     ForEach(weekDays, id: \.self) { day in
-                        WeeklyDayColumnView(day: day, timeBlocks: timeBlocks, tasks: tasks, hourHeight: hourHeight, onToggleComplete: onToggleComplete, onDeleteTimeBlock: onDeleteTimeBlock)
+                        WeeklyDayColumnView(day: day, timeBlocks: timeBlocks, tasks: tasks, hourHeight: hourHeight, onToggleComplete: onToggleComplete, onUpdateDate: onUpdateTimeBlock, onDeleteTimeBlock: onDeleteTimeBlock)
                         Divider()
                     }
                 }
@@ -101,6 +103,7 @@ struct DayColumnView: View {
     let tasks: [Task]
     let isToday: Bool
     let onToggleComplete: (String) -> Void
+    let onUpdateDate: (String, Date, Int) -> Void
     let onDeleteTimeBlock: (String) -> Void
     
     private let hourHeight: CGFloat = 60.0
@@ -182,10 +185,11 @@ struct DayColumnView: View {
                             TimeBlockView(
                                 block: item.block,
                                 geometry: item.geometry,
-                                taskTitle: task?.title ?? "Untitled",
+                                task: task,
+                                allTimeBlocks: timeBlocks,
                                 hourHeight: hourHeight,
-                                isCompleted: task?.is_completed ?? false,
                                 onToggleComplete: onToggleComplete,
+                                onUpdate: onUpdateDate,
                                 onDelete: onDeleteTimeBlock
                             )
                         }
@@ -248,6 +252,7 @@ struct WeeklyDayColumnView: View {
     let tasks: [Task]
     let hourHeight: CGFloat
     let onToggleComplete: (String) -> Void
+    let onUpdateDate: (String, Date, Int) -> Void
     let onDeleteTimeBlock: (String) -> Void
     
     // This computes the geometry for each block for this specific day
@@ -304,10 +309,11 @@ struct WeeklyDayColumnView: View {
                 TimeBlockView(
                     block: item.block,
                     geometry: item.geometry,
-                    taskTitle: task?.title ?? "Untitled",
+                    task: task,
+                    allTimeBlocks: timeBlocks,
                     hourHeight: hourHeight,
-                    isCompleted: task?.is_completed ?? false,
                     onToggleComplete: onToggleComplete,
+                    onUpdate: onUpdateDate,
                     onDelete: onDeleteTimeBlock
                 )
             }
