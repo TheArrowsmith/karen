@@ -150,6 +150,14 @@ class AppStore: ObservableObject {
 
         // --- Chat Intents ---
         case .sendChatMessage(let text):
+            // Get the key from UserDefaults
+            guard let apiKey = UserDefaults.standard.string(forKey: "OpenAIAPIKey"), !apiKey.isEmpty else {
+                // This case should ideally be prevented by the UI, but as a fallback:
+                let errorMessage = "API Key is not set. Please add it in Settings."
+                apply(.receiveChatMessage(ChatMessage(text: errorMessage, sender: .bot)))
+                return
+            }
+
             // Add the user's message to the history immediately
             let message = ChatMessage(text: text, sender: .user)
             apply(.sendChatMessage(message))
@@ -164,7 +172,7 @@ class AppStore: ObservableObject {
             // Define the task to be executed
             let task = { [weak self] in
                 guard let self else { return }
-                await self.handleSend(requestBody: requestBody)
+                await self.handleSend(requestBody: requestBody, apiKey: apiKey)
             }
 
             // Set loading state and kick off the task
@@ -212,8 +220,8 @@ class AppStore: ObservableObject {
     }
     
     // Add this new private method to AppStore
-    private func handleSend(requestBody: ChatRequest) async {
-        let result = await apiService.send(requestBody: requestBody)
+    private func handleSend(requestBody: ChatRequest, apiKey: String) async {
+        let result = await apiService.send(requestBody: requestBody, apiKey: apiKey)
         
         switch result {
         case .success(let response):
@@ -240,8 +248,8 @@ class AppStore: ObservableObject {
         case .failure(let error):
             // On failure, set the error state and provide a retry closure
             self.chatLoadingState = .error(error: error) {
-                // The retry action re-triggers this same function
-                await self.handleSend(requestBody: requestBody)
+                // The retry action re-triggers this same function, passing the key again
+                await self.handleSend(requestBody: requestBody, apiKey: apiKey)
             }
         }
     }

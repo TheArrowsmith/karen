@@ -34,7 +34,7 @@ class TestGraphE2E(unittest.TestCase):
         )
 
         # Run the graph
-        response = run_graph(app_state)
+        response = run_graph(app_state, OPENAI_API_KEY or "")
 
         # Assertions
         self.assertEqual(len(response.actions), 1, "Expected exactly one action to be created.")
@@ -61,7 +61,7 @@ class TestGraphE2E(unittest.TestCase):
         )
         
         # Run the graph
-        response = run_graph(app_state)
+        response = run_graph(app_state, OPENAI_API_KEY or "")
         
         # Assertions
         self.assertEqual(len(response.actions), 1, "Expected exactly one action.")
@@ -84,7 +84,7 @@ class TestGraphE2E(unittest.TestCase):
         )
 
         # Run the graph
-        response = run_graph(app_state)
+        response = run_graph(app_state, OPENAI_API_KEY or "")
 
         # Assertions
         self.assertEqual(len(response.actions), 1, "Expected exactly one action.")
@@ -112,7 +112,7 @@ class TestGraphE2E(unittest.TestCase):
         )
 
         # Run the graph
-        response = run_graph(app_state)
+        response = run_graph(app_state, OPENAI_API_KEY or "")
         
         # Assertions
         self.assertEqual(len(response.actions), 1, "Expected exactly one action.")
@@ -137,7 +137,7 @@ class TestGraphE2E(unittest.TestCase):
         )
 
         # Run the graph
-        response = run_graph(app_state)
+        response = run_graph(app_state, OPENAI_API_KEY or "")
 
         # Assertions
         self.assertEqual(len(response.actions), 0, "Expected zero actions for an ambiguous request.")
@@ -154,7 +154,7 @@ class TestGraphE2E(unittest.TestCase):
         )
 
         # Run the graph
-        response = run_graph(app_state)
+        response = run_graph(app_state, OPENAI_API_KEY or "")
 
         # Assertions
         self.assertEqual(len(response.actions), 0, "Expected zero actions for an out-of-scope request.")
@@ -175,7 +175,7 @@ class TestGraphE2E(unittest.TestCase):
         )
 
         # Run the graph
-        response = run_graph(app_state)
+        response = run_graph(app_state, OPENAI_API_KEY or "")
         
         # Assertions
         self.assertEqual(len(response.actions), 2, "Expected exactly two actions to be created.")

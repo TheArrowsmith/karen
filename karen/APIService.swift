@@ -34,7 +34,7 @@ class APIService {
         return socketURL.path
     }
     
-    func send(requestBody: ChatRequest) async -> Result<ChatResponse, APIError> {
+    func send(requestBody: ChatRequest, apiKey: String) async -> Result<ChatResponse, APIError> {
         return await withCheckedContinuation { continuation in
             do {
                     // Encode the request body to JSON
@@ -47,12 +47,13 @@ class APIService {
                         print("API Request Body: \(jsonString)")
                     }
                     
-                    // Create HTTP request
+                    // Create HTTP request, adding the Authorization header
                     let httpRequest = """
                     POST /api/chat HTTP/1.1\r
                     Host: localhost\r
                     Content-Type: application/json\r
                     Content-Length: \(jsonData.count)\r
+                    Authorization: Bearer \(apiKey)\r
                     Connection: close\r
                     \r
                     

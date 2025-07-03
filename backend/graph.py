@@ -4,7 +4,6 @@ import os
 from typing import List, TypedDict, Optional, Dict, Any
 
 import numpy as np
-from dotenv import load_dotenv
 from langchain_core.messages import HumanMessage, BaseMessage, SystemMessage
 from langchain_openai import ChatOpenAI, OpenAIEmbeddings
 from langgraph.graph import StateGraph, END
@@ -12,12 +11,6 @@ from sklearn.metrics.pairwise import cosine_similarity
 
 from models import AppState, Task, ApiResponse, ChatMessage, TimeBlock
 from intent_router import run_intent_router
-
-# Load environment variables from .env file
-load_dotenv()
-
-# Get the API key from environment
-api_key = os.getenv("OPENAI_API_KEY")
 
 # --- 1. Define the State for our Graph ---
 # This dictionary will be passed between nodes.
@@ -36,31 +29,13 @@ class GraphState(TypedDict):
     actions: List[Dict[str, Any]]
     # The intent detected by the local NLP router
     detected_intent: str
+    # Add the models to the state
+    llm: ChatOpenAI
+    llm_json: ChatOpenAI
+    embeddings_model: OpenAIEmbeddings
 
 
 # --- 2. Define the Tools and the Agent ---
-
-# Initialize the OpenAI models we'll be using
-# gpt-4.1-nano is a fast and capable model for this structured task
-llm = ChatOpenAI(
-    model="gpt-4-0125-preview",
-    temperature=0.7,
-    api_key=api_key
-)
-
-# We'll use JSON mode instead of structured output to avoid Pydantic version conflicts
-llm_json = ChatOpenAI(
-    model="gpt-4-0125-preview", 
-    temperature=0,
-    model_kwargs={"response_format": {"type": "json_object"}},
-    api_key=api_key
-)
-
-# text-embedding-3-small is a cheap and powerful model for semantic search
-embeddings_model = OpenAIEmbeddings(
-    model="text-embedding-3-small",
-    api_key=api_key
-)
 
 def get_system_prompt(tasks: List[Task], time_blocks: List[TimeBlock], candidate_tasks: Optional[List[Task]], candidate_time_blocks: Optional[List[TimeBlock]]) -> str:
     """Dynamically generates the system prompt for the LLM."""
@@ -131,7 +106,7 @@ For calendar time blocks:
 6. Always generate a `response_message` that confirms what you've done or asks for clarification.
 """
 
-def find_similar_tasks(query: str, tasks: List[Task], top_k: int = 5) -> List[Task]:
+def find_similar_tasks(query: str, tasks: List[Task], embeddings_model: OpenAIEmbeddings, top_k: int = 5) -> List[Task]:
     """Finds the most semantically similar tasks to a given query."""
     if not tasks:
         return []
@@ -147,7 +122,7 @@ def find_similar_tasks(query: str, tasks: List[Task], top_k: int = 5) -> List[Ta
     
     return [tasks[i] for i in top_k_indices]
 
-def find_similar_time_blocks(query: str, time_blocks: List[TimeBlock], tasks: List[Task], top_k: int = 3) -> List[TimeBlock]:
+def find_similar_time_blocks(query: str, time_blocks: List[TimeBlock], tasks: List[Task], embeddings_model: OpenAIEmbeddings, top_k: int = 3) -> List[TimeBlock]:
     """Finds the most semantically similar time blocks to a query."""
     if not time_blocks or not tasks:
         return []
@@ -185,16 +160,17 @@ def find_candidate_tasks_node(state: GraphState) -> GraphState:
     user_query = state["app_state"].chatHistory[-1].text
     all_tasks = state["app_state"].tasks
     all_time_blocks = state["app_state"].timeBlocks
+    embeddings_model = state["embeddings_model"] # Get model from state
 
     # We only run this if the query isn't obviously a creation command
     if "add" not in user_query.lower() and "create" not in user_query.lower():
-        candidate_tasks = find_similar_tasks(user_query, all_tasks)
+        candidate_tasks = find_similar_tasks(user_query, all_tasks, embeddings_model)
         state["candidate_tasks"] = candidate_tasks
     else:
         state["candidate_tasks"] = []
         
     # Also find candidate time blocks
-    candidate_time_blocks = find_similar_time_blocks(user_query, all_time_blocks, all_tasks)
+    candidate_time_blocks = find_similar_time_blocks(user_query, all_time_blocks, all_tasks, embeddings_model)
     state["candidate_time_blocks"] = candidate_time_blocks
 
     return state
@@ -202,6 +178,7 @@ def find_candidate_tasks_node(state: GraphState) -> GraphState:
 def agent_node(state: GraphState) -> GraphState:
     """The main agent node. It invokes the LLM to decide on actions and a response."""
     import json
+    llm_json = state["llm_json"] # Get model from state
     
     system_prompt = get_system_prompt(
         state["app_state"].tasks, 
@@ -221,18 +198,14 @@ def agent_node(state: GraphState) -> GraphState:
         # For complex actions, we will trust the LLM's output structure as defined in the prompt.
         actions = bot_response.get("actions", [])
         
-        return {
-            **state,
-            "chat_response": bot_response.get("response_message", "I processed your request."),
-            "actions": actions
-        }
+        state["chat_response"] = bot_response.get("response_message", "I processed your request.")
+        state["actions"] = actions
+        return state
     except (json.JSONDecodeError, KeyError) as e:
         print(f"Error parsing LLM response: {e}")
-        return {
-            **state,
-            "chat_response": "I'm sorry, I encountered an error processing your request. Please try again.",
-            "actions": []
-        }
+        state["chat_response"] = "I'm sorry, I encountered an error processing your request. Please try again."
+        state["actions"] = []
+        return state
 
 def final_response_node(state: GraphState) -> GraphState:
     """Assembles the final API response. This is the last step."""
@@ -261,23 +234,23 @@ def intent_router_node(state: GraphState) -> GraphState:
 def specialized_agent_node(state: GraphState) -> GraphState:
     """A specialized, lightweight agent for DELETE and TOGGLE intents."""
     import json
+    llm_json = state["llm_json"] # Get model from state
     
     intent = state["detected_intent"]
     user_query = state["app_state"].chatHistory[-1].text
     all_tasks = state["app_state"].tasks
     
     # Prepare a generic failure response
-    failure_response = {
-        **state,
-        "chat_response": "I couldn't find an item matching your request. Could you be more specific?",
-        "actions": []
-    }
+    def get_failure_response():
+        state["chat_response"] = "I couldn't find an item matching your request. Could you be more specific?"
+        state["actions"] = []
+        return state
     
     prompt = ""
     # Generate a focused prompt based on the intent
     if intent in ["DELETE_TASK", "TOGGLE_TASK"]:
         candidate_items = state.get("candidate_tasks", [])
-        if not candidate_items: return failure_response
+        if not candidate_items: return get_failure_response()
         
         item_list = "\n".join([f"- ID: {t.id}, Title: '{t.title}'" for t in candidate_items])
         action_word = "delete" if intent == "DELETE_TASK" else "toggle"
@@ -289,7 +262,7 @@ If none match, return: {{"item_id": null}}"""
 
     elif intent == "DELETE_TIME_BLOCK":
         candidate_items = state.get("candidate_time_blocks", [])
-        if not candidate_items: return failure_response
+        if not candidate_items: return get_failure_response()
         
         task_map = {task.id: task.title for task in all_tasks}
         item_list = "\n".join([f"- ID: {tb.id}, Title: '{task_map.get(tb.task_id, 'Unknown Task')}' at {tb.start_time.strftime('%H:%M')}" for tb in candidate_items])
@@ -299,7 +272,7 @@ These are the candidate events:
 Return JSON with the ID of the event to delete: {{"item_id": "the-correct-id"}}
 If none match, return: {{"item_id": null}}"""
     else:
-        return failure_response
+        return get_failure_response()
 
     # Make a lightweight LLM call
     response = llm_json.invoke([HumanMessage(content=prompt)])
@@ -310,16 +283,19 @@ If none match, return: {{"item_id": null}}"""
         
         if item_id:
             if intent == "DELETE_TASK":
-                title = next((t.title for t in state.get("candidate_tasks", []) if t.id == item_id), "the task")
+                candidate_tasks = state.get("candidate_tasks") or []
+                title = next((t.title for t in candidate_tasks if t.id == item_id), "the task")
                 state["chat_response"] = f"OK, I've deleted '{title}' from your list."
                 state["actions"] = [{"action_type": "deleteTask", "payload": {"id": item_id}}]
             elif intent == "TOGGLE_TASK":
-                title = next((t.title for t in state.get("candidate_tasks", []) if t.id == item_id), "the task")
+                candidate_tasks = state.get("candidate_tasks") or []
+                title = next((t.title for t in candidate_tasks if t.id == item_id), "the task")
                 state["chat_response"] = f"OK, I've toggled the completion status of '{title}'."
                 state["actions"] = [{"action_type": "toggleTaskCompletion", "payload": {"id": item_id}}]
             elif intent == "DELETE_TIME_BLOCK":
                 # For response message, find the original block and its task title
-                block = next((b for b in state.get("candidate_time_blocks", []) if b.id == item_id), None)
+                candidate_time_blocks = state.get("candidate_time_blocks") or []
+                block = next((b for b in candidate_time_blocks if b.id == item_id), None)
                 task_title = next((t.title for t in all_tasks if t.id == block.task_id), "the event") if block else "the event"
                 state["chat_response"] = f"OK, I've removed '{task_title}' from your calendar."
                 state["actions"] = [{"action_type": "deleteTimeBlock", "payload": {"id": item_id}}]
@@ -403,8 +379,19 @@ app = workflow.compile()
 
 
 # --- 5. Create a simple runner function ---
-def run_graph(app_state: AppState) -> ApiResponse:
+def run_graph(app_state: AppState, api_key: str) -> ApiResponse:
     """Runs the graph and returns the final API response."""
+
+    # Create model instances here, using the provided key
+    llm = ChatOpenAI(model="gpt-4-0125-preview", temperature=0.7, api_key=api_key)
+    llm_json = ChatOpenAI(
+        model="gpt-4-0125-preview", 
+        temperature=0,
+        model_kwargs={"response_format": {"type": "json_object"}},
+        api_key=api_key
+    )
+    embeddings_model = OpenAIEmbeddings(model="text-embedding-3-small", api_key=api_key)
+
     initial_state: GraphState = {
         "app_state": app_state,
         "messages": [],
@@ -412,7 +399,11 @@ def run_graph(app_state: AppState) -> ApiResponse:
         "candidate_time_blocks": None,
         "chat_response": "",
         "actions": [],
-        "detected_intent": ""
+        "detected_intent": "",
+        # Pass model instances in the state
+        "llm": llm,
+        "llm_json": llm_json,
+        "embeddings_model": embeddings_model,
     }
     final_state = app.invoke(initial_state)
     return ApiResponse(

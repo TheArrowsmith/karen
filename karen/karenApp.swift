@@ -10,12 +10,14 @@ import SwiftUI
 @main
 struct karenApp: App {
     @StateObject private var store = AppStore(initialState: AppStore.load())
+    @StateObject private var settingsManager = SettingsManager()
     @Environment(\.scenePhase) private var scenePhase
 
     var body: some Scene {
         WindowGroup {
             ContentView()
                 .environmentObject(store)
+                .environmentObject(settingsManager)
         }
         .commands {
             CommandGroup(replacing: .undoRedo) {
@@ -57,6 +59,11 @@ struct karenApp: App {
                 .keyboardShortcut("t", modifiers: .command)
             }
         }
+        
+        Settings {
+            SettingsView(settingsManager: settingsManager)
+        }
+
         .onChange(of: scenePhase) { oldPhase, newPhase in
             if newPhase == .background {
                 store.save()

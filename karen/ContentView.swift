@@ -9,6 +9,7 @@ import SwiftUI
 
 struct ContentView: View {
     @EnvironmentObject var store: AppStore
+    @EnvironmentObject var settingsManager: SettingsManager // Get the settings manager
     
     var body: some View {
         GeometryReader { geometry in
@@ -29,17 +30,21 @@ struct ContentView: View {
                     totalWidth: geometry.size.width > 400 ? geometry.size.width - 400 : 850,
                     rightMinWidth: 400
                 ) {
-                     // Center Panel (Chat)
-                     ChatView(
-                         messages: store.state.chatHistory,
-                         loadingState: store.chatLoadingState,
-                         onRetry: {
-                             store.dispatch(.retryLastChatMessage)
-                         },
-                         onSendMessage: { text in
-                             store.dispatch(.sendChatMessage(text: text))
-                         }
-                     )
+                    // Center Panel (Chat) - THIS IS THE MODIFIED PART
+                    if settingsManager.apiKey.isEmpty {
+                        ApiKeyPromptView()
+                    } else {
+                        ChatView(
+                            messages: store.state.chatHistory,
+                            loadingState: store.chatLoadingState,
+                            onRetry: {
+                                store.dispatch(.retryLastChatMessage)
+                            },
+                            onSendMessage: { text in
+                                store.dispatch(.sendChatMessage(text: text))
+                            }
+                        )
+                    }
                 } right: {
                     // Right Panel (New Calendar)
                     CalendarView(
@@ -73,6 +78,34 @@ struct ContentView: View {
         }, message: {
             Text("This will permanently delete your entire chat history. This action cannot be undone.")
         })
+    }
+}
+
+// Add this new View at the bottom of ContentView.swift
+struct ApiKeyPromptView: View {
+    var body: some View {
+        VStack(spacing: 16) {
+            Image(systemName: "key.fill")
+                .font(.system(size: 40))
+                .foregroundColor(.secondary)
+            
+            Text("OpenAI API Key Required")
+                .font(.title2)
+                .fontWeight(.bold)
+            
+            Text("Please add your OpenAI API key in the settings to enable chat.")
+                .multilineTextAlignment(.center)
+                .foregroundColor(.secondary)
+                .frame(maxWidth: 280)
+            
+            Button("Open Settings") {
+                // This is the standard way to open the Settings scene on macOS
+                NSApp.sendAction(Selector(("showSettingsWindow:")), to: nil, from: nil)
+            }
+            .keyboardShortcut(",", modifiers: .command)
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .background(Color(NSColor.controlBackgroundColor))
     }
 }
 
