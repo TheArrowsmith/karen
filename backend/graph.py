@@ -199,18 +199,14 @@ def agent_node(state: GraphState) -> GraphState:
         # For complex actions, we will trust the LLM's output structure as defined in the prompt.
         actions = bot_response.get("actions", [])
         
-        return {
-            **state,
-            "chat_response": bot_response.get("response_message", "I processed your request."),
-            "actions": actions
-        }
+        state["chat_response"] = bot_response.get("response_message", "I processed your request.")
+        state["actions"] = actions
+        return state
     except (json.JSONDecodeError, KeyError) as e:
         print(f"Error parsing LLM response: {e}")
-        return {
-            **state,
-            "chat_response": "I'm sorry, I encountered an error processing your request. Please try again.",
-            "actions": []
-        }
+        state["chat_response"] = "I'm sorry, I encountered an error processing your request. Please try again."
+        state["actions"] = []
+        return state
 
 def final_response_node(state: GraphState) -> GraphState:
     """Assembles the final API response. This is the last step."""
@@ -246,18 +242,17 @@ def specialized_agent_node(state: GraphState) -> GraphState:
     user_query = state["app_state"].chatHistory[-1].text
     all_tasks = state["app_state"].tasks
     
-    # Prepare a generic failure response
-    failure_response = {
-        **state,
-        "chat_response": "I couldn't find an item matching your request. Could you be more specific?",
-        "actions": []
-    }
+    # Prepare a generic failure response function
+    def create_failure_response():
+        state["chat_response"] = "I couldn't find an item matching your request. Could you be more specific?"
+        state["actions"] = []
+        return state
     
     prompt = ""
     # Generate a focused prompt based on the intent
     if intent in ["DELETE_TASK", "TOGGLE_TASK"]:
-        candidate_items = state.get("candidate_tasks", [])
-        if not candidate_items: return failure_response
+        candidate_items = state.get("candidate_tasks") or []
+        if not candidate_items: return create_failure_response()
         
         item_list = "\n".join([f"- ID: {t.id}, Title: '{t.title}'" for t in candidate_items])
         action_word = "delete" if intent == "DELETE_TASK" else "toggle"
@@ -268,8 +263,8 @@ Return JSON with the ID of the task to {action_word}: {{"item_id": "the-correct-
 If none match, return: {{"item_id": null}}"""
 
     elif intent == "DELETE_TIME_BLOCK":
-        candidate_items = state.get("candidate_time_blocks", [])
-        if not candidate_items: return failure_response
+        candidate_items = state.get("candidate_time_blocks") or []
+        if not candidate_items: return create_failure_response()
         
         task_map = {task.id: task.title for task in all_tasks}
         item_list = "\n".join([f"- ID: {tb.id}, Title: '{task_map.get(tb.task_id, 'Unknown Task')}' at {tb.start_time.strftime('%H:%M')}" for tb in candidate_items])
@@ -279,7 +274,7 @@ These are the candidate events:
 Return JSON with the ID of the event to delete: {{"item_id": "the-correct-id"}}
 If none match, return: {{"item_id": null}}"""
     else:
-        return failure_response
+        return create_failure_response()
 
     # Make a lightweight LLM call
     response = llm_json.invoke([HumanMessage(content=prompt)])
@@ -290,16 +285,16 @@ If none match, return: {{"item_id": null}}"""
         
         if item_id:
             if intent == "DELETE_TASK":
-                title = next((t.title for t in state.get("candidate_tasks", []) if t.id == item_id), "the task")
+                title = next((t.title for t in (state.get("candidate_tasks") or []) if t.id == item_id), "the task")
                 state["chat_response"] = f"OK, I've deleted '{title}' from your list."
                 state["actions"] = [{"action_type": "deleteTask", "payload": {"id": item_id}}]
             elif intent == "TOGGLE_TASK":
-                title = next((t.title for t in state.get("candidate_tasks", []) if t.id == item_id), "the task")
+                title = next((t.title for t in (state.get("candidate_tasks") or []) if t.id == item_id), "the task")
                 state["chat_response"] = f"OK, I've toggled the completion status of '{title}'."
                 state["actions"] = [{"action_type": "toggleTaskCompletion", "payload": {"id": item_id}}]
             elif intent == "DELETE_TIME_BLOCK":
                 # For response message, find the original block and its task title
-                block = next((b for b in state.get("candidate_time_blocks", []) if b.id == item_id), None)
+                block = next((b for b in (state.get("candidate_time_blocks") or []) if b.id == item_id), None)
                 task_title = next((t.title for t in all_tasks if t.id == block.task_id), "the event") if block else "the event"
                 state["chat_response"] = f"OK, I've removed '{task_title}' from your calendar."
                 state["actions"] = [{"action_type": "deleteTimeBlock", "payload": {"id": item_id}}]

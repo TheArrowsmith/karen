@@ -26,7 +26,7 @@ def read_root():
 @app.post("/api/chat", response_model=ApiResponse, tags=["Chat"])
 def process_chat_message(
     app_state: AppState,
-    authorization: Annotated[Optional[str], Header()] = None
+    authorization: Annotated[Optional[str], Header(alias="Authorization")] = None
 ):
     """
     Receives the full application state (tasks and chat history),
@@ -34,15 +34,19 @@ def process_chat_message(
     and returns a conversational response and a list of actions.
     The OpenAI API key must be provided in the 'Authorization' header.
     """
-    if not authorization or not authorization.startswith("Bearer "):
+    if not authorization or not authorization.strip().startswith("Bearer "):
         raise HTTPException(
             status_code=401,
             detail="Authorization header with Bearer token is required."
         )
     
-    api_key = authorization.split("Bearer ")[1]
-    if not api_key:
-        raise HTTPException(status_code=401, detail="Invalid API key provided.")
+    # More robust API key extraction
+    try:
+        api_key = authorization.split("Bearer ", 1)[1].strip()
+        if not api_key:
+            raise ValueError("Empty API key")
+    except (IndexError, ValueError):
+        raise HTTPException(status_code=401, detail="Invalid API key format.")
 
     if not app_state.chatHistory:
         raise HTTPException(status_code=400, detail="Chat history cannot be empty.")
