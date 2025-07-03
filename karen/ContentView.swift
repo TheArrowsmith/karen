@@ -47,6 +47,9 @@ struct ContentView: View {
                         tasks: store.state.tasks,
                         onToggleComplete: { taskId in
                             store.dispatch(.toggleTaskCompletion(id: taskId))
+                        },
+                        onDeleteTimeBlock: { blockId in
+                            store.dispatch(.deleteTimeBlock(id: blockId))
                         }
                     )
                 }

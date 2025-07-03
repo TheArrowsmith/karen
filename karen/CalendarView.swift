@@ -13,6 +13,7 @@ struct CalendarView: View {
     let timeBlocks: [TimeBlock]
     let tasks: [Task]
     let onToggleComplete: (String) -> Void
+    let onDeleteTimeBlock: (String) -> Void
 
     var body: some View {
         VStack(spacing: 0) {
@@ -23,9 +24,9 @@ struct CalendarView: View {
             
             // The main grid area
             if viewMode == .daily {
-                DailyView(date: currentDate, timeBlocks: timeBlocks, tasks: tasks, onToggleComplete: onToggleComplete)
+                DailyView(date: currentDate, timeBlocks: timeBlocks, tasks: tasks, onToggleComplete: onToggleComplete, onDeleteTimeBlock: onDeleteTimeBlock)
             } else {
-                WeeklyView(date: currentDate, timeBlocks: timeBlocks, tasks: tasks, onToggleComplete: onToggleComplete)
+                WeeklyView(date: currentDate, timeBlocks: timeBlocks, tasks: tasks, onToggleComplete: onToggleComplete, onDeleteTimeBlock: onDeleteTimeBlock)
             }
         }
         .background(Color(NSColor.windowBackgroundColor))
