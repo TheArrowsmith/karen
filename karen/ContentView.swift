@@ -44,7 +44,10 @@ struct ContentView: View {
                     // Right Panel (New Calendar)
                     CalendarView(
                         timeBlocks: store.state.timeBlocks,
-                        tasks: store.state.tasks
+                        tasks: store.state.tasks,
+                        onToggleComplete: { taskId in
+                            store.dispatch(.toggleTaskCompletion(id: taskId))
+                        }
                     )
                 }
             }

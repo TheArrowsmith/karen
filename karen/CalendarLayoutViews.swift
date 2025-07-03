@@ -5,11 +5,12 @@ struct DailyView: View {
     let date: Date
     let timeBlocks: [TimeBlock]
     let tasks: [Task]
+    let onToggleComplete: (String) -> Void
 
     var body: some View {
         HStack(spacing: 0) {
             // A single column for the selected day
-            DayColumnView(day: date, timeBlocks: timeBlocks, tasks: tasks, isToday: Calendar.current.isDateInToday(date))
+            DayColumnView(day: date, timeBlocks: timeBlocks, tasks: tasks, isToday: Calendar.current.isDateInToday(date), onToggleComplete: onToggleComplete)
         }
     }
 }
@@ -19,6 +20,7 @@ struct WeeklyView: View {
     let date: Date
     let timeBlocks: [TimeBlock]
     let tasks: [Task]
+    let onToggleComplete: (String) -> Void
     
     private let hourHeight: CGFloat = 60.0
     
@@ -81,7 +83,7 @@ struct WeeklyView: View {
                     
                     // Day columns
                     ForEach(weekDays, id: \.self) { day in
-                        WeeklyDayColumnView(day: day, timeBlocks: timeBlocks, tasks: tasks, hourHeight: hourHeight)
+                        WeeklyDayColumnView(day: day, timeBlocks: timeBlocks, tasks: tasks, hourHeight: hourHeight, onToggleComplete: onToggleComplete)
                         Divider()
                     }
                 }
@@ -96,6 +98,7 @@ struct DayColumnView: View {
     let timeBlocks: [TimeBlock]
     let tasks: [Task]
     let isToday: Bool
+    let onToggleComplete: (String) -> Void
     
     private let hourHeight: CGFloat = 60.0
 
@@ -172,11 +175,14 @@ struct DayColumnView: View {
                     // This prevents the blocks from overflowing the view.
                     VStack(alignment: .leading, spacing: 0) {
                         ForEach(timeBlockGeometries, id: \.block.id) { item in
+                            let task = tasks.first(where: { $0.id == item.block.task_id })
                             TimeBlockView(
                                 block: item.block,
                                 geometry: item.geometry,
-                                taskTitle: tasks.first(where: { $0.id == item.block.task_id })?.title ?? "Untitled",
-                                hourHeight: hourHeight
+                                taskTitle: task?.title ?? "Untitled",
+                                hourHeight: hourHeight,
+                                isCompleted: task?.is_completed ?? false,
+                                onToggleComplete: onToggleComplete
                             )
                         }
                     }
@@ -237,6 +243,7 @@ struct WeeklyDayColumnView: View {
     let timeBlocks: [TimeBlock]
     let tasks: [Task]
     let hourHeight: CGFloat
+    let onToggleComplete: (String) -> Void
     
     // This computes the geometry for each block for this specific day
     private var timeBlockGeometries: [(block: TimeBlock, geometry: BlockGeometry)] {
@@ -288,11 +295,14 @@ struct WeeklyDayColumnView: View {
             // FIX: The internal padding of TimeBlockView now handles alignment.
             // No offset is needed.
             ForEach(timeBlockGeometries, id: \.block.id) { item in
+                let task = tasks.first(where: { $0.id == item.block.task_id })
                 TimeBlockView(
                     block: item.block,
                     geometry: item.geometry,
-                    taskTitle: tasks.first(where: { $0.id == item.block.task_id })?.title ?? "Untitled",
-                    hourHeight: hourHeight
+                    taskTitle: task?.title ?? "Untitled",
+                    hourHeight: hourHeight,
+                    isCompleted: task?.is_completed ?? false,
+                    onToggleComplete: onToggleComplete
                 )
             }
         }
