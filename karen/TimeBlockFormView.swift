@@ -38,6 +38,9 @@ struct TimeBlockFormView: View {
     
     // Checks if the current start/end time overlaps with any other block
     private var isOverlapping: Bool {
+        // Don't check for overlaps if the time range is invalid
+        guard endTime > startTime else { return false }
+        
         let proposedInterval = DateInterval(start: startTime, end: endTime)
         
         for otherBlock in allOtherTimeBlocks {
