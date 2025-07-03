@@ -5,6 +5,8 @@ struct TimeBlockView: View {
     let geometry: BlockGeometry // Pre-calculated geometry
     let taskTitle: String
     let hourHeight: CGFloat
+    let isCompleted: Bool
+    let onToggleComplete: (String) -> Void
 
     var body: some View {
         ZStack(alignment: .topLeading) {
@@ -16,6 +18,7 @@ struct TimeBlockView: View {
                     .font(.system(size: 12, weight: .semibold))
                     .foregroundColor(.white)
                     .lineLimit(1)
+                    .strikethrough(isCompleted)
                 
                 Text(timeRangeText)
                     .font(.system(size: 10))
@@ -23,6 +26,17 @@ struct TimeBlockView: View {
             }
             .padding(.horizontal, 6)
             .padding(.vertical, 4)
+            .padding(.leading, 20)
+            
+            // Checkbox overlay in top left
+            Button(action: { onToggleComplete(block.task_id) }) {
+                Image(systemName: isCompleted ? "checkmark.square.fill" : "square")
+                    .foregroundColor(.white)
+                    .font(.system(size: 14))
+            }
+            .buttonStyle(PlainButtonStyle())
+            .padding(.top, 4)
+            .padding(.leading, 6)
         }
         .frame(height: geometry.height)
         .padding(.horizontal, 5)
