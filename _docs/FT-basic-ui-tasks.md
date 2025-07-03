@@ -30,7 +30,7 @@ struct Task: Identifiable, Codable, Hashable {
     var priority: Priority?
     var creation_date: Date = Date()
     var deadline: Date?
-    var predicted_duration_in_minutes: Int?
+
 }
 
 // The Priority Enum for Tasks
@@ -129,9 +129,9 @@ class StubBackend: ObservableObject {
         // For brevity, you can adapt the defaultTasks array from the example.
         // Ensure you use our `Task` model, not the example's.
         return [
-             Task(id: "1", title: "Review quarterly reports", description: "Analyze Q3 performance metrics.", is_completed: false, priority: .high, deadline: Date().addingTimeInterval(86400*2), predicted_duration_in_minutes: 120),
-             Task(id: "2", title: "Update project documentation", is_completed: false, priority: .medium, deadline: Date().addingTimeInterval(86400*5), predicted_duration_in_minutes: 45),
-             Task(id: "3", title: "Code review for new feature", description: "Review pull request #247.", is_completed: false, priority: .high, deadline: Date().addingTimeInterval(-86400), predicted_duration_in_minutes: 60)
+             Task(id: "1", title: "Review quarterly reports", description: "Analyze Q3 performance metrics.", is_completed: false, priority: .high, deadline: Date().addingTimeInterval(86400*2)),
+             Task(id: "2", title: "Update project documentation", is_completed: false, priority: .medium, deadline: Date().addingTimeInterval(86400*5)),
+             Task(id: "3", title: "Code review for new feature", description: "Review pull request #247.", is_completed: false, priority: .high, deadline: Date().addingTimeInterval(-86400))
         ]
     }
     

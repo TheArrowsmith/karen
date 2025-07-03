@@ -50,7 +50,7 @@ class Task(BaseModel):
     priority: Optional[Priority] = None
     creation_date: datetime = Field(default_factory=datetime.utcnow)
     deadline: Optional[datetime] = None
-    predicted_duration_in_minutes: Optional[int] = None
+    
 
 class Sender(str, Enum):
     user = "user"
