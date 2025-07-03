@@ -1,22 +1,27 @@
 graph TD
-    Start([Start]) --> IR["intent_router<br/>Detects user intent using local NLP"]
+    Start([User Message]) --> IR["🧭 intent_router<br/><br/>Detects intent using spaCy NLP:<br/>• CREATE_TASK<br/>• DELETE_TASK<br/>• TOGGLE_TASK<br/>• AGENT_FALLBACK"]
     
-    IR -->|"CREATE_TASK"| FR["final_response<br/>Assembles final API response"]
-    IR -->|"DELETE_TASK or TOGGLE_TASK"| FCT["find_candidate_tasks<br/>Semantic search for relevant tasks"]
-    IR -->|"AGENT_FALLBACK or others"| PIM["prepare_initial_messages<br/>Prepares chat history for LLM"]
+    IR -->|"CREATE_TASK<br/>(Full Shortcut)"| FR["📤 final_response<br/><br/>Assembles API response<br/>with actions & chat message"]
+    
+    IR -->|"DELETE_TASK or<br/>TOGGLE_TASK<br/>(Partial Shortcut)"| FCT["🔍 find_candidate_tasks<br/><br/>Semantic search using<br/>embeddings to find<br/>relevant tasks"]
+    
+    IR -->|"AGENT_FALLBACK<br/>or complex queries"| PIM["💬 prepare_initial_messages<br/><br/>Formats chat history<br/>for LLM context"]
     
     PIM --> FCT
     
-    FCT -->|"DELETE_TASK or TOGGLE_TASK"| SA["specialized_agent<br/>Lightweight LLM for delete/toggle"]
-    FCT -->|"Others"| A["agent<br/>Main LLM agent for complex tasks"]
+    FCT -->|"DELETE_TASK or<br/>TOGGLE_TASK"| SA["⚡ specialized_agent<br/><br/>Lightweight LLM call<br/>to identify specific<br/>task ID for action"]
+    
+    FCT -->|"Other intents"| A["🤖 agent<br/><br/>Main LLM agent<br/>handles complex requests<br/>with full capabilities"]
     
     SA --> FR
     A --> FR
-    FR --> End([END])
+    FR --> End([API Response])
     
-    style IR fill:#e1f5fe
-    style FCT fill:#fff3e0
-    style SA fill:#f3e5f5
-    style A fill:#e8f5e9
-    style FR fill:#fce4ec
-    style PIM fill:#f5f5f5 
+    style IR fill:#e1f5fe,stroke:#01579b,stroke-width:2px
+    style FCT fill:#fff3e0,stroke:#e65100,stroke-width:2px
+    style SA fill:#f3e5f5,stroke:#4a148c,stroke-width:2px
+    style A fill:#e8f5e9,stroke:#1b5e20,stroke-width:2px
+    style FR fill:#fce4ec,stroke:#880e4f,stroke-width:2px
+    style PIM fill:#f5f5f5,stroke:#424242,stroke-width:2px
+    style Start fill:#e3f2fd,stroke:#0d47a1,stroke-width:3px
+    style End fill:#c8e6c9,stroke:#2e7d32,stroke-width:3px 

@@ -1,0 +1,27 @@
+graph TB
+    subgraph "GraphState Properties"
+        State["📋 GraphState<br/><br/>• app_state: AppState<br/>• messages: List[BaseMessage]<br/>• candidate_tasks: Optional[List[Task]]<br/>• chat_response: str<br/>• actions: List[Dict]<br/>• detected_intent: str"]
+    end
+    
+    subgraph "Routing Logic"
+        IR2["🧭 Intent Router"]
+        R1{{"route_after_intent()<br/><br/>CREATE_TASK → final_response<br/>DELETE/TOGGLE → find_candidates<br/>Others → prepare_messages"}}
+        R2{{"route_after_find_candidates()<br/><br/>DELETE/TOGGLE → specialized_agent<br/>Others → main agent"}}
+    end
+    
+    subgraph "Processing Flow"
+        U[User Query] --> IR2
+        IR2 --> R1
+        R1 -->|Path 1| FastTrack["✅ Fast Track<br/>Task created locally<br/>No API calls"]
+        R1 -->|Path 2| SemiTrack["⚡ Semi-Fast Track<br/>1 embedding call<br/>1 lightweight LLM call"]
+        R1 -->|Path 3| FullTrack["🤖 Full LLM Track<br/>1 embedding call<br/>1 full LLM call"]
+        
+        FastTrack --> Response[API Response]
+        SemiTrack --> Response
+        FullTrack --> Response
+    end
+    
+    style State fill:#f9f9f9,stroke:#666,stroke-width:2px
+    style FastTrack fill:#c8e6c9,stroke:#2e7d32,stroke-width:2px
+    style SemiTrack fill:#fff9c4,stroke:#f57f17,stroke-width:2px
+    style FullTrack fill:#ffccbc,stroke:#bf360c,stroke-width:2px 
