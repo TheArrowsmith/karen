@@ -10,11 +10,14 @@ from langchain_openai import ChatOpenAI, OpenAIEmbeddings
 from langgraph.graph import StateGraph, END
 from sklearn.metrics.pairwise import cosine_similarity
 
-from models import AppState, Task, ApiResponse, ChatMessage
+from models import AppState, Task, ApiResponse, ChatMessage, TimeBlock
 from intent_router import run_intent_router
 
 # Load environment variables from .env file
 load_dotenv()
+
+# Get the API key from environment
+api_key = os.getenv("OPENAI_API_KEY")
 
 # --- 1. Define the State for our Graph ---
 # This dictionary will be passed between nodes.
@@ -25,6 +28,8 @@ class GraphState(TypedDict):
     messages: List[BaseMessage]
     # A list of candidate tasks found by our search tool
     candidate_tasks: Optional[List[Task]]
+    # A list of candidate time blocks found by our search tool
+    candidate_time_blocks: Optional[List[TimeBlock]]
     # The final response for the user
     chat_response: str
     # The list of actions for the frontend
@@ -37,136 +42,93 @@ class GraphState(TypedDict):
 
 # Initialize the OpenAI models we'll be using
 # gpt-4.1-nano is a fast and capable model for this structured task
-llm = ChatOpenAI(model="gpt-4.1-nano", temperature=0, openai_api_key=os.getenv("OPENAI_API_KEY"))
-# text-embedding-3-small is a cheap and powerful model for semantic search
-embeddings_model = OpenAIEmbeddings(model="text-embedding-3-small", openai_api_key=os.getenv("OPENAI_API_KEY"))
+llm = ChatOpenAI(
+    model="gpt-4-0125-preview",
+    temperature=0.7,
+    api_key=api_key
+)
 
 # We'll use JSON mode instead of structured output to avoid Pydantic version conflicts
-llm_json = ChatOpenAI(model="gpt-4.1-nano", temperature=0, openai_api_key=os.getenv("OPENAI_API_KEY"), model_kwargs={"response_format": {"type": "json_object"}})
+llm_json = ChatOpenAI(
+    model="gpt-4-0125-preview", 
+    temperature=0,
+    model_kwargs={"response_format": {"type": "json_object"}},
+    api_key=api_key
+)
 
-def get_system_prompt(tasks: List[Task], candidate_tasks: Optional[List[Task]]) -> str:
+# text-embedding-3-small is a cheap and powerful model for semantic search
+embeddings_model = OpenAIEmbeddings(
+    model="text-embedding-3-small",
+    api_key=api_key
+)
+
+def get_system_prompt(tasks: List[Task], time_blocks: List[TimeBlock], candidate_tasks: Optional[List[Task]], candidate_time_blocks: Optional[List[TimeBlock]]) -> str:
     """Dynamically generates the system prompt for the LLM."""
-    
-    # Show full task details for better context
+
     task_list_str = "\n".join([
         f"- ID: {t.id}, Title: '{t.title}', Completed: {t.is_completed}, "
         f"Priority: {t.priority}, Deadline: {t.deadline}, "
-        f"Created: {t.creation_date}" 
+        f"Created: {t.creation_date}"
         for t in tasks
     ])
-    
-    candidate_task_str = "No specific candidates identified. The user might be creating a new task or the query is ambiguous."
+
+    time_block_list_str = "No events are scheduled on the calendar."
+    if time_blocks:
+        time_block_list_str = "Here is the current list of all scheduled time blocks on the calendar:\n" + "\n".join([
+            f"- Block ID: {tb.id}, Task: '{next((t.title for t in tasks if t.id == tb.task_id), 'Unknown Task')}', Start: {tb.start_time.strftime('%Y-%m-%d %H:%M')}, Duration: {tb.actual_duration_in_minutes} mins"
+            for tb in time_blocks
+        ])
+
+    candidate_task_str = "No specific tasks identified as candidates."
     if candidate_tasks:
         candidate_task_str = "Based on a semantic search, these are the most likely tasks the user is referring to:\n" + \
-                             "\n".join([
-                                 f"- ID: {t.id}, Title: '{t.title}', Completed: {t.is_completed}, "
-                                 f"Priority: {t.priority}, Deadline: {t.deadline}"
-                                 for t in candidate_tasks
-                             ])
+                             "\n".join([f"- ID: {t.id}, Title: '{t.title}'" for t in candidate_tasks])
+
+    candidate_time_block_str = "No specific calendar events identified as candidates."
+    if candidate_time_blocks:
+        candidate_time_block_str = "Based on a semantic search, these are the most likely calendar events the user is referring to:\n" + \
+                                 "\n".join([f"- Block ID: {tb.id}, Task Title: '{next((t.title for t in tasks if t.id == tb.task_id), 'Unknown')}', Start: {tb.start_time.strftime('%H:%M')}" for tb in candidate_time_blocks])
 
     return f"""
-You are a helpful and efficient task management assistant. Your goal is to help the user manage their to-do list via conversation.
-You are part of a system that is stateless. You will receive the entire list of tasks and chat history in every request.
+You are a helpful and efficient task management assistant. Your goal is to help the user manage their to-do list and calendar via conversation.
+You are part of a system that is stateless. You will receive the entire list of tasks, time blocks, and chat history in every request.
 The user's most recent message is the last one in the chat history. You must respond to it.
 
 Here is the current list of all tasks:
 {task_list_str}
 
+{time_block_list_str}
+
 {candidate_task_str}
 
-Based on the user's latest message, you MUST decide whether to create, update, or delete a task, or simply chat.
+{candidate_time_block_str}
 
-You MUST respond with a valid JSON object with this exact structure:
+Based on the user's latest message, you MUST decide what to do. You MUST respond with a valid JSON object with this exact structure:
 {{
   "response_message": "Your conversational response here",
-  "actions": [
-    // Array of action objects, can be empty
-  ]
+  "actions": [ /* Array of action objects, can be empty */ ]
 }}
-
---- EXAMPLES ---
-
-1.  **Implicit Task Creation:**
-    *   User Message: "today I have to water my plants"
-    *   Your JSON Response:
-        {{
-          "response_message": "OK, I've added 'water my plants' to your list for today.",
-          "actions": [
-            {{
-              "action_type": "createTask",
-              "payload": {{
-                "task": {{
-                  "id": "a-new-uuid-you-generate",
-                  "title": "Water the plants",
-                  "is_completed": false,
-                  "deadline": "YYYY-MM-DD" // Set to today's date
-                }}
-              }}
-            }}
-          ]
-        }}
-
-2.  **Ambiguous Request (Requires Clarification):**
-    *   User Message: "delete the meeting task"
-    *   (Assume there are two tasks: 'Plan team meeting' and 'Book meeting room')
-    *   Your JSON Response:
-        {{
-          "response_message": "You have a couple of tasks related to meetings: 'Plan team meeting' and 'Book meeting room'. Which one would you like to delete?",
-          "actions": []
-        }}
-
-3.  **Creation with Title and Description:**
-    *   User Message: "Add a task to plan the vacation. I need to look up flights, hotels, and things to do."
-    *   Your JSON Response:
-        {{
-          "response_message": "Right, I've added 'Plan the vacation' to your list with the details you provided.",
-          "actions": [
-            {{
-              "action_type": "createTask",
-              "payload": {{
-                "task": {{
-                  "id": "a-new-uuid-you-generate",
-                  "title": "Plan the vacation",
-                  "description": "Need to look up flights, hotels, and things to do.",
-                  "is_completed": false
-                }}
-              }}
-            }}
-          ]
-        }}
 
 Available actions and their exact formats:
 
-For creating a task:
-{{
-  "action_type": "createTask",
-  "payload": {{
-    "task": {{
-      "id": "generate-a-uuid-here",
-      "title": "A short, clear title for the task",
-      "description": "Any additional details, context, or notes from the user's request can go here. Can be null.",
-      "is_completed": false,
-      "priority": null, // or "low", "medium", "high"
-      "creation_date": "YYYY-MM-DDTHH:MM:SSZ", // Current UTC time
-      "deadline": null, // or "YYYY-MM-DDTHH:MM:SSZ"
+For tasks:
+- createTask: {{"action_type": "createTask", "payload": {{"task": {{ ...task object... }} }} }}
+- updateTask: {{"action_type": "updateTask", "payload": {{"id": "task-id", "updatedTask": {{ ...task object... }} }} }}
+- deleteTask: {{"action_type": "deleteTask", "payload": {{"id": "task-id"}} }}
+- toggleTaskCompletion: {{"action_type": "toggleTaskCompletion", "payload": {{"id": "task-id"}} }}
 
-    }}
-  }}
-}}
+For calendar time blocks:
+- createTimeBlock: {{"action_type": "createTimeBlock", "payload": {{"task_id": "existing-task-id", "start_time": "YYYY-MM-DDTHH:MM:SSZ", "duration_in_minutes": 60}} }}
+- updateTimeBlock: {{"action_type": "updateTimeBlock", "payload": {{"id": "existing-block-id", "new_start_time": "YYYY-MM-DDTHH:MM:SSZ", "new_duration_in_minutes": 45}} }}
+- deleteTimeBlock: {{"action_type": "deleteTimeBlock", "payload": {{"id": "existing-block-id"}} }}
 
-For other actions:
-- updateTask: {{"action_type": "updateTask", "payload": {{"id": "existing-task-id", "updatedTask": {{complete task object with ALL original fields preserved, only changing what the user requested}}}}}}
-- deleteTask: {{"action_type": "deleteTask", "payload": {{"id": "existing-task-id"}}}}
-- toggleTaskCompletion: {{"action_type": "toggleTaskCompletion", "payload": {{"id": "existing-task-id"}}}}
-
---- IMPORTANT RULES & JSON FORMAT ---
-
-1.  **NEVER** guess a task ID. If the user's request is ambiguous (e.g., "delete the meeting task" when multiple exist), ask for clarification instead of acting.
-2.  When creating a task, you MUST generate a new UUID for the task's 'id' field (format: "xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx").
-3.  For updates, you MUST provide the complete, updated task object in the 'updatedTask' field of the payload.
-4.  For the 'priority' field in any task object, you MUST use one of these exact string values: "low", "medium", or "high". DO NOT use "Priority.high" or other object representations.
-5.  If the user's request is nonsensical, out of scope, or just small talk, do not generate any actions. Just provide a friendly conversational response with an empty actions array.
-6.  Always generate a response_message that confirms what you've done or asks for clarification.
+--- IMPORTANT RULES ---
+1. To schedule a task on the calendar (`createTimeBlock`), you MUST use the ID of an existing task. If the user asks to schedule something that is not yet a task, you MUST create the task first, then create the time block for it in the same `actions` array.
+2. When a user wants to move or reschedule an event, use `updateTimeBlock`.
+3. When a user wants to cancel or remove an event from the calendar, use `deleteTimeBlock`.
+4. NEVER guess an ID. If a request is ambiguous, ask for clarification.
+5. If the user's request is out of scope, just provide a friendly conversational response with an empty actions array.
+6. Always generate a `response_message` that confirms what you've done or asks for clarification.
 """
 
 def find_similar_tasks(query: str, tasks: List[Task], top_k: int = 5) -> List[Task]:
@@ -185,6 +147,30 @@ def find_similar_tasks(query: str, tasks: List[Task], top_k: int = 5) -> List[Ta
     
     return [tasks[i] for i in top_k_indices]
 
+def find_similar_time_blocks(query: str, time_blocks: List[TimeBlock], tasks: List[Task], top_k: int = 3) -> List[TimeBlock]:
+    """Finds the most semantically similar time blocks to a query."""
+    if not time_blocks or not tasks:
+        return []
+    
+    task_map = {task.id: task.title for task in tasks}
+    
+    block_descriptions = []
+    for tb in time_blocks:
+        task_title = task_map.get(tb.task_id, "a scheduled event")
+        block_descriptions.append(f"{task_title} at {tb.start_time.strftime('%I:%M %p on %A')}")
+
+    if not block_descriptions:
+        return []
+
+    query_embedding = embeddings_model.embed_query(query)
+    block_embeddings = embeddings_model.embed_documents(block_descriptions)
+
+    similarities = cosine_similarity([query_embedding], block_embeddings)[0]
+    
+    top_k_indices = np.argsort(similarities)[-top_k:][::-1]
+    
+    return [time_blocks[i] for i in top_k_indices]
+
 # --- 3. Define the Nodes of the Graph ---
 
 def prepare_initial_messages(state: GraphState) -> GraphState:
@@ -195,23 +181,34 @@ def prepare_initial_messages(state: GraphState) -> GraphState:
     return state
 
 def find_candidate_tasks_node(state: GraphState) -> GraphState:
-    """Node that runs semantic search to find relevant tasks."""
+    """Node that runs semantic search to find relevant tasks and time blocks."""
     user_query = state["app_state"].chatHistory[-1].text
     all_tasks = state["app_state"].tasks
+    all_time_blocks = state["app_state"].timeBlocks
+
     # We only run this if the query isn't obviously a creation command
     if "add" not in user_query.lower() and "create" not in user_query.lower():
         candidate_tasks = find_similar_tasks(user_query, all_tasks)
         state["candidate_tasks"] = candidate_tasks
     else:
         state["candidate_tasks"] = []
+        
+    # Also find candidate time blocks
+    candidate_time_blocks = find_similar_time_blocks(user_query, all_time_blocks, all_tasks)
+    state["candidate_time_blocks"] = candidate_time_blocks
+
     return state
 
 def agent_node(state: GraphState) -> GraphState:
     """The main agent node. It invokes the LLM to decide on actions and a response."""
     import json
-    import uuid
     
-    system_prompt = get_system_prompt(state["app_state"].tasks, state.get("candidate_tasks"))
+    system_prompt = get_system_prompt(
+        state["app_state"].tasks, 
+        state["app_state"].timeBlocks,
+        state.get("candidate_tasks"),
+        state.get("candidate_time_blocks")
+    )
     messages = [SystemMessage(content=system_prompt)] + state["messages"]
 
     # Get JSON response from LLM
@@ -221,37 +218,8 @@ def agent_node(state: GraphState) -> GraphState:
         # Parse the JSON response
         bot_response = json.loads(response.content)
         
-        # Process actions to ensure they match our model structure
-        actions = []
-        for action_data in bot_response.get("actions", []):
-            action_type = action_data.get("action_type")
-            payload = action_data.get("payload", {})
-            
-            if action_type == "createTask":
-                # Ensure the task has all required fields
-                task_data = payload.get("task", {})
-                if "id" not in task_data:
-                    task_data["id"] = str(uuid.uuid4())
-                if "title" in task_data:  # Only create if title exists
-                    actions.append({
-                        "action_type": "createTask",
-                        "payload": {"task": task_data}
-                    })
-            elif action_type == "updateTask":
-                actions.append({
-                    "action_type": "updateTask",
-                    "payload": payload
-                })
-            elif action_type == "deleteTask":
-                actions.append({
-                    "action_type": "deleteTask",
-                    "payload": payload
-                })
-            elif action_type == "toggleTaskCompletion":
-                actions.append({
-                    "action_type": "toggleTaskCompletion",
-                    "payload": payload
-                })
+        # For complex actions, we will trust the LLM's output structure as defined in the prompt.
+        actions = bot_response.get("actions", [])
         
         return {
             **state,
@@ -296,65 +264,72 @@ def specialized_agent_node(state: GraphState) -> GraphState:
     
     intent = state["detected_intent"]
     user_query = state["app_state"].chatHistory[-1].text
-    candidate_tasks = state.get("candidate_tasks", [])
+    all_tasks = state["app_state"].tasks
     
-    if not candidate_tasks:
-        state["chat_response"] = "I couldn't find any tasks matching your request."
-        state["actions"] = []
-        return state
+    # Prepare a generic failure response
+    failure_response = {
+        **state,
+        "chat_response": "I couldn't find an item matching your request. Could you be more specific?",
+        "actions": []
+    }
     
-    # Create a focused prompt for the specific intent
-    if intent == "DELETE_TASK":
-        task_list = "\n".join([f"- ID: {t.id}, Title: '{t.title}'" for t in candidate_tasks])
-        prompt = f"""
-User wants to delete a task with this query: "{user_query}"
-
+    prompt = ""
+    # Generate a focused prompt based on the intent
+    if intent in ["DELETE_TASK", "TOGGLE_TASK"]:
+        candidate_items = state.get("candidate_tasks", [])
+        if not candidate_items: return failure_response
+        
+        item_list = "\n".join([f"- ID: {t.id}, Title: '{t.title}'" for t in candidate_items])
+        action_word = "delete" if intent == "DELETE_TASK" else "toggle"
+        prompt = f"""User wants to {action_word} a task with this query: "{user_query}"
 These are the candidate tasks:
-{task_list}
+{item_list}
+Return JSON with the ID of the task to {action_word}: {{"item_id": "the-correct-id"}}
+If none match, return: {{"item_id": null}}"""
 
-Return JSON with the ID of the task to delete:
-{{"task_id": "the-correct-task-id"}}
+    elif intent == "DELETE_TIME_BLOCK":
+        candidate_items = state.get("candidate_time_blocks", [])
+        if not candidate_items: return failure_response
+        
+        task_map = {task.id: task.title for task in all_tasks}
+        item_list = "\n".join([f"- ID: {tb.id}, Title: '{task_map.get(tb.task_id, 'Unknown Task')}' at {tb.start_time.strftime('%H:%M')}" for tb in candidate_items])
+        prompt = f"""User wants to delete a calendar event with this query: "{user_query}"
+These are the candidate events:
+{item_list}
+Return JSON with the ID of the event to delete: {{"item_id": "the-correct-id"}}
+If none match, return: {{"item_id": null}}"""
+    else:
+        return failure_response
 
-If none match, return: {{"task_id": null}}
-"""
-    else:  # TOGGLE_TASK
-        task_list = "\n".join([f"- ID: {t.id}, Title: '{t.title}', Completed: {t.is_completed}" for t in candidate_tasks])
-        prompt = f"""
-User wants to toggle completion of a task with this query: "{user_query}"
-
-These are the candidate tasks:
-{task_list}
-
-Return JSON with the ID of the task to toggle:
-{{"task_id": "the-correct-task-id"}}
-
-If none match, return: {{"task_id": null}}
-"""
-    
     # Make a lightweight LLM call
     response = llm_json.invoke([HumanMessage(content=prompt)])
     
     try:
         result = json.loads(response.content)
-        task_id = result.get("task_id")
+        item_id = result.get("item_id")
         
-        if task_id:
-            # Find the task title for the response message
-            task_title = next((t.title for t in candidate_tasks if t.id == task_id), "the task")
-            
+        if item_id:
             if intent == "DELETE_TASK":
-                state["chat_response"] = f"OK, I've deleted '{task_title}' from your list."
-                state["actions"] = [{"action_type": "deleteTask", "payload": {"id": task_id}}]
-            else:  # TOGGLE_TASK
-                state["chat_response"] = f"OK, I've toggled the completion status of '{task_title}'."
-                state["actions"] = [{"action_type": "toggleTaskCompletion", "payload": {"id": task_id}}]
+                title = next((t.title for t in state.get("candidate_tasks", []) if t.id == item_id), "the task")
+                state["chat_response"] = f"OK, I've deleted '{title}' from your list."
+                state["actions"] = [{"action_type": "deleteTask", "payload": {"id": item_id}}]
+            elif intent == "TOGGLE_TASK":
+                title = next((t.title for t in state.get("candidate_tasks", []) if t.id == item_id), "the task")
+                state["chat_response"] = f"OK, I've toggled the completion status of '{title}'."
+                state["actions"] = [{"action_type": "toggleTaskCompletion", "payload": {"id": item_id}}]
+            elif intent == "DELETE_TIME_BLOCK":
+                # For response message, find the original block and its task title
+                block = next((b for b in state.get("candidate_time_blocks", []) if b.id == item_id), None)
+                task_title = next((t.title for t in all_tasks if t.id == block.task_id), "the event") if block else "the event"
+                state["chat_response"] = f"OK, I've removed '{task_title}' from your calendar."
+                state["actions"] = [{"action_type": "deleteTimeBlock", "payload": {"id": item_id}}]
         else:
             state["chat_response"] = "I couldn't find a task matching your request. Could you be more specific?"
             state["actions"] = []
             
     except (json.JSONDecodeError, KeyError) as e:
         print(f"Error in specialized agent: {e}")
-        state["chat_response"] = "I had trouble understanding which task you meant. Could you be more specific?"
+        state["chat_response"] = "I had trouble understanding which item you meant. Could you be more specific?"
         state["actions"] = []
     
     return state
@@ -368,20 +343,17 @@ def route_after_intent(state: GraphState) -> str:
     intent = state.get("detected_intent", "AGENT_FALLBACK")
     
     if intent == "CREATE_TASK":
-        # Full shortcut - go straight to final response
         return "final_response"
-    elif intent in ["DELETE_TASK", "TOGGLE_TASK"]:
-        # Partial shortcut - find candidates then use specialized agent
+    elif intent in ["DELETE_TASK", "TOGGLE_TASK", "DELETE_TIME_BLOCK"]:
         return "find_candidate_tasks"
     else:
-        # Fallback - use the full agent path
         return "prepare_initial_messages"
 
 def route_after_find_candidates(state: GraphState) -> str:
     """Decides which agent to use after finding candidates."""
     intent = state.get("detected_intent", "AGENT_FALLBACK")
     
-    if intent in ["DELETE_TASK", "TOGGLE_TASK"]:
+    if intent in ["DELETE_TASK", "TOGGLE_TASK", "DELETE_TIME_BLOCK"]:
         return "specialized_agent"
     else:
         return "agent"
@@ -437,6 +409,7 @@ def run_graph(app_state: AppState) -> ApiResponse:
         "app_state": app_state,
         "messages": [],
         "candidate_tasks": None,
+        "candidate_time_blocks": None,
         "chat_response": "",
         "actions": [],
         "detected_intent": ""

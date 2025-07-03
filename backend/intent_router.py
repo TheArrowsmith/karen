@@ -39,10 +39,19 @@ toggle_pattern = [
     {"IS_PUNCT": False, "OP": "*"}
 ]
 
+# Pattern for deleting a time block from the calendar.
+delete_time_block_pattern = [
+    {"LOWER": {"IN": ["cancel", "remove", "delete"]}},
+    {"LOWER": {"IN": ["the", "my"]}, "OP": "?"},
+    {"IS_PUNCT": False, "OP": "*"},
+    {"LOWER": {"IN": ["meeting", "event", "session", "block"]}}
+]
+
 if matcher:
     matcher.add("CREATE_TASK", [create_pattern])
     matcher.add("DELETE_TASK", [delete_pattern])
     matcher.add("TOGGLE_TASK", [toggle_pattern])
+    matcher.add("DELETE_TIME_BLOCK", [delete_time_block_pattern])
 
 # --- Main Router Function ---
 
@@ -104,7 +113,7 @@ def run_intent_router(user_message: str):
         }
     
     # --- Tier 2: Partial Shortcut for Other Intents ---
-    if rule_id in ["DELETE_TASK", "TOGGLE_TASK"]:
+    if rule_id in ["DELETE_TASK", "TOGGLE_TASK", "DELETE_TIME_BLOCK"]:
         return {"intent": rule_id, "payload": None, "response": None}
 
     # --- Tier 3: Fallback ---

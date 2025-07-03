@@ -155,7 +155,11 @@ class AppStore: ObservableObject {
             apply(.sendChatMessage(message))
 
             // Create the request body *before* the async task
-            let requestBody = ChatRequest(tasks: state.tasks, chatHistory: state.chatHistory)
+            let requestBody = ChatRequest(
+                tasks: state.tasks,
+                timeBlocks: state.timeBlocks,
+                chatHistory: state.chatHistory
+            )
 
             // Define the task to be executed
             let task = { [weak self] in
@@ -253,6 +257,12 @@ class AppStore: ObservableObject {
             return .toggleTaskCompletion(id: payload.id)
         case .update(let payload):
             return .updateTask(id: payload.id, updatedTask: payload.updatedTask)
+        case .createTimeBlock(let payload):
+            return .createTimeBlock(taskID: payload.task_id, startTime: payload.start_time, duration: payload.duration_in_minutes)
+        case .updateTimeBlock(let payload):
+            return .updateTimeBlock(id: payload.id, newStartTime: payload.new_start_time, newDuration: payload.new_duration_in_minutes)
+        case .deleteTimeBlock(let payload):
+            return .deleteTimeBlock(id: payload.id)
         }
     }
 

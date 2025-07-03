@@ -3,11 +3,13 @@ import Foundation
 // The request body we send to the server
 struct ChatRequest: Codable {
     let tasks: [Task]
+    let timeBlocks: [TimeBlock]
     let chatHistory: [ChatMessage]
     
     // Python server expects camelCase, not snake_case
     private enum CodingKeys: String, CodingKey {
         case tasks
+        case timeBlocks
         case chatHistory  // Keep as camelCase to match Python
     }
 }
@@ -29,6 +31,9 @@ struct APIAction: Decodable {
         case deleteTask
         case updateTask
         case toggleTaskCompletion
+        case createTimeBlock
+        case updateTimeBlock
+        case deleteTimeBlock
     }
 
     // We use a custom initializer to decode the correct payload based on the `type`
@@ -48,6 +53,12 @@ struct APIAction: Decodable {
             self.payload = .update(try container.decode(UpdateTaskPayload.self, forKey: .payload))
         case .toggleTaskCompletion:
             self.payload = .toggle(try container.decode(IDPayload.self, forKey: .payload))
+        case .createTimeBlock:
+            self.payload = .createTimeBlock(try container.decode(CreateTimeBlockPayload.self, forKey: .payload))
+        case .updateTimeBlock:
+            self.payload = .updateTimeBlock(try container.decode(UpdateTimeBlockPayload.self, forKey: .payload))
+        case .deleteTimeBlock:
+            self.payload = .deleteTimeBlock(try container.decode(IDPayload.self, forKey: .payload))
         }
     }
 
@@ -67,6 +78,9 @@ enum ActionPayload {
     case delete(IDPayload)
     case update(UpdateTaskPayload)
     case toggle(IDPayload)
+    case createTimeBlock(CreateTimeBlockPayload)
+    case updateTimeBlock(UpdateTimeBlockPayload)
+    case deleteTimeBlock(IDPayload)
 }
 
 // Payloads for actions that only need an ID
@@ -78,4 +92,18 @@ struct IDPayload: Decodable {
 struct UpdateTaskPayload: Decodable {
     let id: String
     let updatedTask: Task
+}
+
+// Payload for the createTimeBlock action
+struct CreateTimeBlockPayload: Decodable {
+    let task_id: String
+    let start_time: Date
+    let duration_in_minutes: Int
+}
+
+// Payload for the updateTimeBlock action
+struct UpdateTimeBlockPayload: Decodable {
+    let id: String
+    let new_start_time: Date
+    let new_duration_in_minutes: Int
 } 

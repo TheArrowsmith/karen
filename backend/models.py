@@ -23,6 +23,12 @@ class Task(BaseModel):
     creation_date: datetime = Field(default_factory=datetime.utcnow)
     deadline: Optional[datetime] = None
 
+class TimeBlock(BaseModel):
+    id: str = Field(default_factory=lambda: str(uuid.uuid4()))
+    task_id: str
+    start_time: datetime
+    actual_duration_in_minutes: int
+
 class Sender(str, Enum):
     user = "user"
     bot = "bot"
@@ -36,6 +42,7 @@ class ChatMessage(BaseModel):
 
 class AppState(BaseModel):
     tasks: List[Task]
+    timeBlocks: List[TimeBlock]
     chatHistory: List[ChatMessage]
 
 # --- API Response Body Model ---
