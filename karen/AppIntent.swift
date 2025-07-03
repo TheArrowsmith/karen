@@ -12,6 +12,7 @@ enum AppIntent {
     // TimeBlock Intents
     case updateTimeBlock(id: String, newStartTime: Date, newDuration: Int)
     case deleteTimeBlock(id: String)
+    case createTimeBlock(taskID: String, startTime: Date, duration: Int) // NEW
     
     // Chat Intents
     case sendChatMessage(text: String)

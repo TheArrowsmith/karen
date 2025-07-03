@@ -1,4 +1,5 @@
 import SwiftUI
+import UniformTypeIdentifiers
 
 // --- Daily View ---
 struct DailyView: View {
@@ -8,11 +9,24 @@ struct DailyView: View {
     let onToggleComplete: (String) -> Void
     let onUpdateTimeBlock: (String, Date, Int) -> Void
     let onDeleteTimeBlock: (String) -> Void
+    let onDropTask: (String, Date, Int) -> Void // NEW
+
+    @State private var dragInfo: DragInfo? = nil // NEW state to manage drag
 
     var body: some View {
         HStack(spacing: 0) {
             // A single column for the selected day
-            DayColumnView(day: date, timeBlocks: timeBlocks, tasks: tasks, isToday: Calendar.current.isDateInToday(date), onToggleComplete: onToggleComplete, onUpdateDate: onUpdateTimeBlock, onDeleteTimeBlock: onDeleteTimeBlock)
+            DayColumnView(
+                day: date, 
+                timeBlocks: timeBlocks, 
+                tasks: tasks, 
+                isToday: Calendar.current.isDateInToday(date), 
+                onToggleComplete: onToggleComplete, 
+                onUpdateDate: onUpdateTimeBlock,
+                onDeleteTimeBlock: onDeleteTimeBlock,
+                dragInfo: $dragInfo, // Pass binding
+                onDropTask: onDropTask // Pass closure
+            )
         }
     }
 }
@@ -25,6 +39,9 @@ struct WeeklyView: View {
     let onToggleComplete: (String) -> Void
     let onUpdateTimeBlock: (String, Date, Int) -> Void
     let onDeleteTimeBlock: (String) -> Void
+    let onDropTask: (String, Date, Int) -> Void // NEW
+    
+    @State private var dragInfo: DragInfo? = nil // NEW state to manage drag
     
     private let hourHeight: CGFloat = 60.0
     
@@ -87,7 +104,17 @@ struct WeeklyView: View {
                     
                     // Day columns
                     ForEach(weekDays, id: \.self) { day in
-                        WeeklyDayColumnView(day: day, timeBlocks: timeBlocks, tasks: tasks, hourHeight: hourHeight, onToggleComplete: onToggleComplete, onUpdateDate: onUpdateTimeBlock, onDeleteTimeBlock: onDeleteTimeBlock)
+                        WeeklyDayColumnView(
+                            day: day, 
+                            timeBlocks: timeBlocks, 
+                            tasks: tasks, 
+                            hourHeight: hourHeight, 
+                            onToggleComplete: onToggleComplete, 
+                            onUpdateDate: onUpdateTimeBlock,
+                            onDeleteTimeBlock: onDeleteTimeBlock,
+                            dragInfo: $dragInfo, // Pass binding
+                            onDropTask: onDropTask // Pass closure
+                        )
                         Divider()
                     }
                 }
@@ -105,6 +132,8 @@ struct DayColumnView: View {
     let onToggleComplete: (String) -> Void
     let onUpdateDate: (String, Date, Int) -> Void
     let onDeleteTimeBlock: (String) -> Void
+    @Binding var dragInfo: DragInfo? // NEW: To receive drag state
+    let onDropTask: (String, Date, Int) -> Void // NEW: Callback for when drop completes
     
     private let hourHeight: CGFloat = 60.0
 
@@ -155,49 +184,69 @@ struct DayColumnView: View {
     }
 
     var body: some View {
-        VStack(spacing: 0) {
-            // Column Header
-            HStack {
-                Text(dayFormatter.string(from: day).uppercased())
-                    .font(.system(size: 11, weight: .bold))
-                    .foregroundColor(isToday ? .red : .secondary)
+        // WRAP the entire VStack in a GeometryReader to get its size for coordinate conversion
+        GeometryReader { geometry in
+            VStack(spacing: 0) {
+                // Column Header
+                HStack {
+                    Text(dayFormatter.string(from: day).uppercased())
+                        .font(.system(size: 11, weight: .bold))
+                        .foregroundColor(isToday ? .red : .secondary)
 
-                Text(dateFormatter.string(from: day))
-                    .font(.system(size: 13, weight: .medium))
-                    .padding(4)
-                    .background(isToday ? Color.red : Color.clear)
-                    .clipShape(Circle())
-                    .foregroundColor(isToday ? .white : .primary)
-            }
-            .padding(.vertical, 8)
-
-            Divider()
-            
-            ScrollView {
-                ZStack(alignment: .topLeading) {
-                    HourlyGridView(hourHeight: hourHeight)
-                    
-                    // FIX: Wrap blocks in a container and pad it to align with the grid.
-                    // This prevents the blocks from overflowing the view.
-                    ZStack(alignment: .topLeading) {
-                        ForEach(timeBlockGeometries, id: \.block.id) { item in
-                            let task = tasks.first(where: { $0.id == item.block.task_id })
-                            TimeBlockView(
-                                block: item.block,
-                                geometry: item.geometry,
-                                task: task,
-                                allTimeBlocks: timeBlocks,
-                                hourHeight: hourHeight,
-                                onToggleComplete: onToggleComplete,
-                                onUpdate: onUpdateDate,
-                                onDelete: onDeleteTimeBlock
-                            )
-                        }
-                    }
-                    .padding(.leading, 50) // Indent to align right of hour labels.
-                    .padding(.trailing, 10) // Prevent touching the scrollbar/edge.
+                    Text(dateFormatter.string(from: day))
+                        .font(.system(size: 13, weight: .medium))
+                        .padding(4)
+                        .background(isToday ? Color.red : Color.clear)
+                        .clipShape(Circle())
+                        .foregroundColor(isToday ? .white : .primary)
                 }
-                .frame(minHeight: hourHeight * 24)
+                .padding(.vertical, 8)
+
+                Divider()
+                
+                ScrollView {
+                    ZStack(alignment: .topLeading) {
+                        HourlyGridView(hourHeight: hourHeight)
+                        
+                        // FIX: Wrap blocks in a container and pad it to align with the grid.
+                        // This prevents the blocks from overflowing the view.
+                        ZStack(alignment: .topLeading) {
+                            ForEach(timeBlockGeometries, id: \.block.id) { item in
+                                let task = tasks.first(where: { $0.id == item.block.task_id })
+                                TimeBlockView(
+                                    block: item.block,
+                                    geometry: item.geometry,
+                                    task: task,
+                                    allTimeBlocks: timeBlocks,
+                                    hourHeight: hourHeight,
+                                    onToggleComplete: onToggleComplete,
+                                    onUpdate: onUpdateDate,
+                                    onDelete: onDeleteTimeBlock
+                                )
+                            }
+                            
+                            // NEW: Display the ghost block if a drag is active on this day
+                            if let info = dragInfo, info.isDropPossible, Calendar.current.isDate(info.targetDay, inSameDayAs: day) {
+                                GhostBlockView(geometry: BlockGeometry(
+                                    yOffset: CGFloat(Calendar.current.dateComponents([.minute], from: Calendar.current.startOfDay(for: day), to: info.startTime).minute ?? 0) / 60.0 * hourHeight,
+                                    height: CGFloat(info.duration) / 60.0 * hourHeight
+                                ))
+                                .allowsHitTesting(false) // Make sure it doesn't interfere with drop detection
+                            }
+                        }
+                        .padding(.leading, 50) // Indent to align right of hour labels.
+                        .padding(.trailing, 10) // Prevent touching the scrollbar/edge.
+                        // ADD a .onDrop modifier to this ZStack
+                        .onDrop(of: [.plainText], delegate: SimpleDayDropDelegate(
+                            day: day,
+                            timeBlocks: timeBlocks,
+                            dragInfo: $dragInfo,
+                            onDropTask: onDropTask,
+                            geometry: geometry
+                        ))
+                    }
+                    .frame(minHeight: hourHeight * 24)
+                }
             }
         }
     }
@@ -254,6 +303,8 @@ struct WeeklyDayColumnView: View {
     let onToggleComplete: (String) -> Void
     let onUpdateDate: (String, Date, Int) -> Void
     let onDeleteTimeBlock: (String) -> Void
+    @Binding var dragInfo: DragInfo? // NEW
+    let onDropTask: (String, Date, Int) -> Void // NEW
     
     // This computes the geometry for each block for this specific day
     private var timeBlockGeometries: [(block: TimeBlock, geometry: BlockGeometry)] {
@@ -290,35 +341,55 @@ struct WeeklyDayColumnView: View {
     }
     
     var body: some View {
-        ZStack(alignment: .topLeading) {
-            // Just the horizontal divider lines, no hour labels
-            VStack(spacing: 0) {
-                ForEach(0..<24, id: \.self) { _ in
-                    VStack {
-                        Divider()
-                        Spacer()
+        // WRAP in GeometryReader
+        GeometryReader { geometry in
+            ZStack(alignment: .topLeading) {
+                // Just the horizontal divider lines, no hour labels
+                VStack(spacing: 0) {
+                    ForEach(0..<24, id: \.self) { _ in
+                        VStack {
+                            Divider()
+                            Spacer()
+                        }
+                        .frame(height: hourHeight)
                     }
-                    .frame(height: hourHeight)
+                }
+                
+                // NEW: Display the ghost block
+                if let info = dragInfo, info.isDropPossible, Calendar.current.isDate(info.targetDay, inSameDayAs: day) {
+                    GhostBlockView(geometry: BlockGeometry(
+                        yOffset: CGFloat(Calendar.current.dateComponents([.minute], from: Calendar.current.startOfDay(for: day), to: info.startTime).minute ?? 0) / 60.0 * hourHeight,
+                        height: CGFloat(info.duration) / 60.0 * hourHeight
+                    ))
+                    .allowsHitTesting(false)
+                }
+                
+                // FIX: The internal padding of TimeBlockView now handles alignment.
+                // No offset is needed.
+                ForEach(timeBlockGeometries, id: \.block.id) { item in
+                    let task = tasks.first(where: { $0.id == item.block.task_id })
+                    TimeBlockView(
+                        block: item.block,
+                        geometry: item.geometry,
+                        task: task,
+                        allTimeBlocks: timeBlocks,
+                        hourHeight: hourHeight,
+                        onToggleComplete: onToggleComplete,
+                        onUpdate: onUpdateDate,
+                        onDelete: onDeleteTimeBlock
+                    )
                 }
             }
-            
-            // FIX: The internal padding of TimeBlockView now handles alignment.
-            // No offset is needed.
-            ForEach(timeBlockGeometries, id: \.block.id) { item in
-                let task = tasks.first(where: { $0.id == item.block.task_id })
-                TimeBlockView(
-                    block: item.block,
-                    geometry: item.geometry,
-                    task: task,
-                    allTimeBlocks: timeBlocks,
-                    hourHeight: hourHeight,
-                    onToggleComplete: onToggleComplete,
-                    onUpdate: onUpdateDate,
-                    onDelete: onDeleteTimeBlock
-                )
-            }
+            .frame(minHeight: hourHeight * 24)
+            // ADD .onDrop modifier to the ZStack
+            .onDrop(of: [.plainText], delegate: SimpleDayDropDelegate(
+                day: day,
+                timeBlocks: timeBlocks,
+                dragInfo: $dragInfo,
+                onDropTask: onDropTask,
+                geometry: geometry
+            ))
         }
-        .frame(minHeight: hourHeight * 24)
     }
 }
 
@@ -354,5 +425,121 @@ struct HourlyGridView: View {
         else if hour < 12 { return "\(hour) AM" }
         else if hour == 12 { return "12 PM" }
         else { return "\(hour - 12) PM" }
+    }
+}
+
+// Simple drop delegate that tracks cursor position
+struct SimpleDayDropDelegate: DropDelegate {
+    let day: Date
+    let timeBlocks: [TimeBlock]
+    @Binding var dragInfo: DragInfo?
+    let onDropTask: (String, Date, Int) -> Void
+    let geometry: GeometryProxy
+    
+    func dropEntered(info: DropInfo) {
+        // Initialize drag info when entering
+        dragInfo = DragInfo(
+            taskID: "",
+            targetDay: day,
+            startTime: day,
+            duration: CalendarHelpers.defaultDuration
+        )
+        
+        // Try to get task duration from the drag data
+        if let provider = info.itemProviders(for: [.plainText]).first {
+            provider.loadDataRepresentation(forTypeIdentifier: UTType.plainText.identifier) { data, error in
+                if let data = data {
+                    // Try to parse as JSON first
+                    if let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+                       let duration = json["duration"] as? Int {
+                        DispatchQueue.main.async {
+                            self.dragInfo?.duration = duration
+                        }
+                    }
+                }
+            }
+        }
+    }
+    
+    func dropUpdated(info: DropInfo) -> DropProposal? {
+        guard dragInfo != nil else { return DropProposal(operation: .forbidden) }
+        
+        // Calculate drop position relative to the scroll view content
+        let dropY = info.location.y
+        let dropTime = CalendarHelpers.timeFor(y: max(0, dropY), in: day)
+        
+        // Calculate smart placement
+        let placement = CalendarHelpers.calculateSmartPlacement(
+            for: dropTime,
+            on: day,
+            existingTimeBlocks: timeBlocks
+        )
+        
+        // Update drag info
+        dragInfo?.targetDay = day
+        dragInfo?.startTime = placement.startTime
+        dragInfo?.duration = placement.duration
+        dragInfo?.isDropPossible = placement.isPossible
+        
+        return DropProposal(operation: placement.isPossible ? .copy : .forbidden)
+    }
+    
+    func dropExited(info: DropInfo) {
+        dragInfo = nil
+    }
+    
+    func performDrop(info: DropInfo) -> Bool {
+        print("performDrop called on day: \(day)")
+        guard let currentDragInfo = dragInfo else {
+            print("No dragInfo available")
+            dragInfo = nil
+            return false
+        }
+        
+        guard currentDragInfo.isDropPossible else {
+            print("Drop not possible - no available slot")
+            dragInfo = nil
+            return false
+        }
+        
+        // Load the task ID and perform the drop
+        guard let provider = info.itemProviders(for: [.plainText]).first else {
+            print("No provider found in drop")
+            dragInfo = nil
+            return false
+        }
+        
+        provider.loadDataRepresentation(forTypeIdentifier: UTType.plainText.identifier) { data, error in
+            if let data = data {
+                // Try to parse as JSON first
+                if let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+                   let taskID = json["id"] as? String {
+                    DispatchQueue.main.async {
+                        print("Dropping task \(taskID) at \(currentDragInfo.startTime) for \(currentDragInfo.duration) minutes")
+                        self.onDropTask(taskID, currentDragInfo.startTime, currentDragInfo.duration)
+                        self.dragInfo = nil
+                    }
+                } else if let taskID = String(data: data, encoding: .utf8) {
+                    // Fallback to plain string
+                    DispatchQueue.main.async {
+                        print("Dropping task \(taskID) at \(currentDragInfo.startTime) for \(currentDragInfo.duration) minutes")
+                        self.onDropTask(taskID, currentDragInfo.startTime, currentDragInfo.duration)
+                        self.dragInfo = nil
+                    }
+                } else {
+                    print("Failed to load task ID from drop data")
+                    DispatchQueue.main.async {
+                        self.dragInfo = nil
+                    }
+                }
+            } else {
+                print("Failed to load drop data")
+                DispatchQueue.main.async {
+                    self.dragInfo = nil
+                }
+            }
+        }
+        
+        return true
     }
 } 

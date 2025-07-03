@@ -55,6 +55,7 @@ struct ContentView: View {
                             store.dispatch(.deleteTimeBlock(id: blockId))
                         }
                     )
+                    .environmentObject(store)
                 }
             }
         }

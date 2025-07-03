@@ -5,6 +5,7 @@ enum CalendarViewMode {
 }
 
 struct CalendarView: View {
+    @EnvironmentObject var store: AppStore // NEW
     // These are transient UI states, not part of the global AppState
     @State private var viewMode: CalendarViewMode = .daily
     @State private var currentDate: Date = Date()
@@ -25,9 +26,25 @@ struct CalendarView: View {
             
             // The main grid area
             if viewMode == .daily {
-                DailyView(date: currentDate, timeBlocks: timeBlocks, tasks: tasks, onToggleComplete: onToggleComplete, onUpdateTimeBlock: onUpdateTimeBlock, onDeleteTimeBlock: onDeleteTimeBlock)
+                DailyView(
+                    date: currentDate, 
+                    timeBlocks: timeBlocks, 
+                    tasks: tasks, 
+                    onToggleComplete: onToggleComplete, 
+                    onUpdateTimeBlock: onUpdateTimeBlock,
+                    onDeleteTimeBlock: onDeleteTimeBlock,
+                    onDropTask: handleDrop // NEW
+                )
             } else {
-                WeeklyView(date: currentDate, timeBlocks: timeBlocks, tasks: tasks, onToggleComplete: onToggleComplete, onUpdateTimeBlock: onUpdateTimeBlock, onDeleteTimeBlock: onDeleteTimeBlock)
+                WeeklyView(
+                    date: currentDate, 
+                    timeBlocks: timeBlocks, 
+                    tasks: tasks, 
+                    onToggleComplete: onToggleComplete, 
+                    onUpdateTimeBlock: onUpdateTimeBlock,
+                    onDeleteTimeBlock: onDeleteTimeBlock,
+                    onDropTask: handleDrop // NEW
+                )
             }
         }
         .background(Color(NSColor.windowBackgroundColor))
@@ -54,6 +71,16 @@ struct CalendarView: View {
         case .today:
             currentDate = Date()
         }
+    }
+    
+    // NEW: Function to handle the drop action
+    private func handleDrop(taskID: String, startTime: Date, duration: Int) {
+        print("Handling drop for task: \(taskID), startTime: \(startTime), duration: \(duration)")
+        store.dispatch(.createTimeBlock(
+            taskID: taskID,
+            startTime: startTime,
+            duration: duration
+        ))
     }
 }
 
