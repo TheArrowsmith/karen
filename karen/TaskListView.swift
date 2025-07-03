@@ -154,16 +154,6 @@ struct TaskItemView: View {
                         }
                         .foregroundColor(task.deadline! < Date() ? .red : .secondary)
                     }
-                    
-                    if let duration = task.predicted_duration_in_minutes {
-                        HStack(spacing: 4) {
-                            Image(systemName: "clock")
-                                .font(.system(size: 10))
-                            Text("\(duration) min")
-                                .font(.system(size: 11))
-                        }
-                        .foregroundColor(.secondary)
-                    }
                 }
             }
             
@@ -174,11 +164,11 @@ struct TaskItemView: View {
         .background(Color(NSColor.controlBackgroundColor).opacity(0.5))
         .contentShape(Rectangle())
         .onDrag {
-            // Create an NSItemProvider with the task ID and duration
+            // Create an NSItemProvider with the task ID
             let provider = NSItemProvider()
             provider.registerDataRepresentation(forTypeIdentifier: UTType.plainText.identifier, visibility: .all) { completion in
-                // Send task ID and duration as JSON
-                let taskData = ["id": task.id, "duration": task.predicted_duration_in_minutes ?? 60]
+                // Send task ID as JSON
+                let taskData = ["id": task.id, "duration": 60]
                 if let data = try? JSONSerialization.data(withJSONObject: taskData) {
                     completion(data, nil)
                 } else {
@@ -195,7 +185,7 @@ struct TaskItemView: View {
                     .foregroundColor(.white)
                     .lineLimit(1)
                 
-                Text("\(task.predicted_duration_in_minutes ?? 60) min")
+                Text("60 min")
                     .font(.system(size: 10))
                     .foregroundColor(.white.opacity(0.8))
             }

@@ -9,7 +9,6 @@ struct Task: Identifiable, Codable, Hashable {
     var priority: Priority?
     var creation_date: Date = Date()
     var deadline: Date?
-    var predicted_duration_in_minutes: Int?
     
     // Custom initializer that accepts an optional ID
     init(
@@ -19,8 +18,7 @@ struct Task: Identifiable, Codable, Hashable {
         is_completed: Bool = false,
         priority: Priority? = nil,
         creation_date: Date = Date(),
-        deadline: Date? = nil,
-        predicted_duration_in_minutes: Int? = nil
+        deadline: Date? = nil
     ) {
         self.id = id ?? UUID().uuidString
         self.title = title
@@ -29,7 +27,6 @@ struct Task: Identifiable, Codable, Hashable {
         self.priority = priority
         self.creation_date = creation_date
         self.deadline = deadline
-        self.predicted_duration_in_minutes = predicted_duration_in_minutes
     }
     
     // Custom coding keys to match Python field names
@@ -41,7 +38,6 @@ struct Task: Identifiable, Codable, Hashable {
         case priority
         case creation_date
         case deadline
-        case predicted_duration_in_minutes
     }
 }
 
@@ -100,9 +96,9 @@ struct ChatMessage: Identifiable, Codable, Hashable {
 extension AppState {
     static func sampleData() -> AppState {
         let tasks = [
-             Task(id: "1", title: "Review quarterly reports", description: "Analyze Q3 performance metrics.", is_completed: false, priority: .high, deadline: Date().addingTimeInterval(86400*2), predicted_duration_in_minutes: 120),
-             Task(id: "2", title: "Update project documentation", is_completed: false, priority: .medium, deadline: Date().addingTimeInterval(86400*5), predicted_duration_in_minutes: 45),
-             Task(id: "3", title: "Code review for new feature", description: "Review pull request #247.", is_completed: false, priority: .high, deadline: Date().addingTimeInterval(-86400), predicted_duration_in_minutes: 60)
+             Task(id: "1", title: "Review quarterly reports", description: "Analyze Q3 performance metrics.", is_completed: false, priority: .high, deadline: Date().addingTimeInterval(86400*2)),
+             Task(id: "2", title: "Update project documentation", is_completed: false, priority: .medium, deadline: Date().addingTimeInterval(86400*5)),
+             Task(id: "3", title: "Code review for new feature", description: "Review pull request #247.", is_completed: false, priority: .high, deadline: Date().addingTimeInterval(-86400))
         ]
         
         let today = Calendar.current.startOfDay(for: Date())

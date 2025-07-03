@@ -175,7 +175,7 @@ We need a dedicated SwiftUI view for the form that will appear in the popover.
                 is_completed: false,
                 priority: priority,
                 deadline: deadline,
-                predicted_duration_in_minutes: totalMinutes
+                
             )
             
             onAddTask(newTask)

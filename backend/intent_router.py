@@ -96,7 +96,6 @@ def run_intent_router(user_message: str):
             "priority": None,
             "creation_date": datetime.utcnow().isoformat() + "Z",
             "deadline": None,
-            "predicted_duration_in_minutes": None,
         }
         return {
             "intent": "CREATE_TASK",

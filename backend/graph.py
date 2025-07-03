@@ -149,7 +149,7 @@ For creating a task:
       "priority": null, // or "low", "medium", "high"
       "creation_date": "YYYY-MM-DDTHH:MM:SSZ", // Current UTC time
       "deadline": null, // or "YYYY-MM-DDTHH:MM:SSZ"
-      "predicted_duration_in_minutes": null
+
     }}
   }}
 }}
