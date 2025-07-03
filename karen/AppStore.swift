@@ -117,6 +117,20 @@ class AppStore: ObservableObject {
             let action = AppAction.updateTimeBlock(oldValue: oldBlock, newValue: newBlock)
             applyAndRecord(action)
 
+        case .deleteTimeBlock(let id):
+            guard let index = state.timeBlocks.firstIndex(where: { $0.id == id }) else {
+                if isFromAPI {
+                    let errorMessage = "Sorry, I couldn't find the time block you mentioned."
+                    apply(.receiveChatMessage(ChatMessage(text: errorMessage, sender: .bot)))
+                } else {
+                    triggerInconsistencyAlert(for: "time block with ID \(id)")
+                }
+                return
+            }
+            let blockToDelete = state.timeBlocks[index]
+            let action = AppAction.deleteTimeBlock(timeBlock: blockToDelete, index: index)
+            applyAndRecord(action)
+
         // --- Chat Intents ---
         case .sendChatMessage(let text):
             // Add the user's message to the history immediately
@@ -259,10 +273,21 @@ class AppStore: ObservableObject {
             }
             state.timeBlocks[index] = newValue
         
+        case .deleteTimeBlock(_, let index):
+            // Ensure the index is valid before trying to remove
+            guard state.timeBlocks.indices.contains(index) else {
+                // This shouldn't happen if dispatch is working correctly
+                print("Warning: Attempted to delete time block at invalid index \(index)")
+                return
+            }
+            state.timeBlocks.remove(at: index)
+        
+        case .addTimeBlock(let timeBlock, let index):
+            state.timeBlocks.insert(timeBlock, at: index)
+        
         // --- Non-undoable Chat Actions ---
         case .sendChatMessage(let message):
             state.chatHistory.append(message)
-            // REMOVE all the old logic here (creating loadingMessage, DispatchQueue.main.asyncAfter, etc.)
             
         case .receiveChatMessage(let message):
             state.chatHistory.append(message)
@@ -300,6 +325,10 @@ class AppStore: ObservableObject {
             }
         case .updateTimeBlock(let oldValue, let newValue):
             return .updateTimeBlock(oldValue: newValue, newValue: oldValue)
+        case .deleteTimeBlock(let timeBlock, let index):
+            return .addTimeBlock(timeBlock: timeBlock, index: index)
+        case .addTimeBlock(let timeBlock, let index):
+            return .deleteTimeBlock(timeBlock: timeBlock, index: index)
         default:
             return action // Should not happen for undoable actions
         }

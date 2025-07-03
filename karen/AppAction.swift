@@ -10,6 +10,8 @@ enum AppAction {
 
     // TimeBlock Actions
     case updateTimeBlock(oldValue: TimeBlock, newValue: TimeBlock)
+    case deleteTimeBlock(timeBlock: TimeBlock, index: Int)
+    case addTimeBlock(timeBlock: TimeBlock, index: Int)
     
     // Chat Actions (Non-undoable)
     case sendChatMessage(ChatMessage)

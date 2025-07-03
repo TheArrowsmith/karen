@@ -7,6 +7,9 @@ struct TimeBlockView: View {
     let hourHeight: CGFloat
     let isCompleted: Bool
     let onToggleComplete: (String) -> Void
+    let onDelete: (String) -> Void
+
+    @State private var isHovering = false
 
     var body: some View {
         ZStack(alignment: .topLeading) {
@@ -27,6 +30,7 @@ struct TimeBlockView: View {
             .padding(.horizontal, 6)
             .padding(.vertical, 4)
             .padding(.leading, 20)
+            .allowsHitTesting(false) // Let clicks pass through to buttons
             
             // Checkbox overlay in top left
             Button(action: { onToggleComplete(block.task_id) }) {
@@ -37,10 +41,36 @@ struct TimeBlockView: View {
             .buttonStyle(PlainButtonStyle())
             .padding(.top, 4)
             .padding(.leading, 6)
+            
+            // Delete button in top right (only show when hovering)
+            if isHovering {
+                HStack {
+                    Spacer()
+                    Button(action: { onDelete(block.id) }) {
+                        Image(systemName: "xmark.circle.fill")
+                            .foregroundColor(.white.opacity(0.9))
+                            .font(.system(size: 14))
+                    }
+                    .buttonStyle(PlainButtonStyle())
+                    .help("Delete time block")
+                    .onHover { hovering in
+                        if hovering {
+                            NSCursor.pointingHand.push()
+                        } else {
+                            NSCursor.pop()
+                        }
+                    }
+                }
+                .padding(.top, 4)
+                .padding(.trailing, 6)
+            }
         }
         .frame(height: geometry.height)
         .padding(.horizontal, 5)
         .offset(y: geometry.yOffset)
+        .onHover { hovering in
+            isHovering = hovering
+        }
     }
     
     private var timeRangeText: String {
