@@ -130,6 +130,23 @@ class AppStore: ObservableObject {
             let blockToDelete = state.timeBlocks[index]
             let action = AppAction.deleteTimeBlock(timeBlock: blockToDelete, index: index)
             applyAndRecord(action)
+            
+        case .createTimeBlock(let taskID, let startTime, let duration):
+            // Find the associated task to ensure it exists
+            guard state.tasks.contains(where: { $0.id == taskID }) else {
+                triggerInconsistencyAlert(for: "task with ID \(taskID)")
+                return
+            }
+            
+            let newBlock = TimeBlock(
+                task_id: taskID,
+                start_time: startTime,
+                actual_duration_in_minutes: duration
+            )
+            
+            // Add to the end of the timeblocks array
+            let action = AppAction.addTimeBlock(timeBlock: newBlock, index: state.timeBlocks.count)
+            applyAndRecord(action)
 
         // --- Chat Intents ---
         case .sendChatMessage(let text):

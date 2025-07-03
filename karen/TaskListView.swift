@@ -1,4 +1,5 @@
 import SwiftUI
+import UniformTypeIdentifiers
 
 struct TaskListView: View {
     @EnvironmentObject var store: AppStore
@@ -172,6 +173,38 @@ struct TaskItemView: View {
         .padding(.horizontal, 20)
         .background(Color(NSColor.controlBackgroundColor).opacity(0.5))
         .contentShape(Rectangle())
+        .onDrag {
+            // Create an NSItemProvider with the task ID and duration
+            let provider = NSItemProvider()
+            provider.registerDataRepresentation(forTypeIdentifier: UTType.plainText.identifier, visibility: .all) { completion in
+                // Send task ID and duration as JSON
+                let taskData = ["id": task.id, "duration": task.predicted_duration_in_minutes ?? 60]
+                if let data = try? JSONSerialization.data(withJSONObject: taskData) {
+                    completion(data, nil)
+                } else {
+                    completion(task.id.data(using: .utf8)!, nil)
+                }
+                return nil
+            }
+            return provider
+        } preview: {
+            // Create a simple time block preview
+            VStack(alignment: .leading, spacing: 4) {
+                Text(task.title)
+                    .font(.system(size: 12, weight: .medium))
+                    .foregroundColor(.white)
+                    .lineLimit(1)
+                
+                Text("\(task.predicted_duration_in_minutes ?? 60) min")
+                    .font(.system(size: 10))
+                    .foregroundColor(.white.opacity(0.8))
+            }
+            .padding(.horizontal, 8)
+            .padding(.vertical, 6)
+            .frame(width: 150)
+            .background(Color.blue)
+            .cornerRadius(6)
+        }
         .onTapGesture {
             showEditForm = true
         }
