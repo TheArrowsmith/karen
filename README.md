@@ -2,6 +2,28 @@
 
 Karen is a native macOS task management app that combines a clean, intuitive interface with an AI assistant to help you organize your tasks and schedule through natural conversation.
 
+## How to use
+
+For the app to work you need to create an env file at `backend/.env` with an OpenAI key:
+
+```bash
+# backend/.env
+OPENAI_API_KEY=sk-proj-<key>
+```
+
+Then start the Python server:
+
+```bash
+cd backend
+source venv/bin/activate
+pip install -r requirements.txt
+python -m spacy download en_core_web_sm
+python main.py
+```
+
+Then open the main app in Xcode and click 'Run'
+
+
 ## Features
 
 ### 🎯 Smart Task Management
