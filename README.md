@@ -64,47 +64,6 @@ Karen uses a modern, event-driven architecture:
 - **AI Pipeline**: Multi-stage processing with intent detection, semantic search, and contextual understanding
 - **Communication**: Unix domain sockets for secure, sandboxed IPC
 
-## Installation & Setup
-
-### Prerequisites
-- macOS 15.4 or later
-- Xcode 15 or later
-- Python 3.11+
-- OpenAI API key
-
-### Backend Setup
-
-1. Create an environment file at `backend/.env` with your OpenAI API key:
-```bash
-# backend/.env
-OPENAI_API_KEY=sk-proj-<your-key-here>
-```
-
-2. Set up the Python environment:
-```bash
-cd backend
-python -m venv venv
-source venv/bin/activate
-pip install -r requirements.txt
-```
-
-3. Download the spaCy language model:
-```bash
-python -m spacy download en_core_web_sm
-```
-
-4. Start the backend server:
-```bash
-uvicorn main:app --reload
-```
-
-The server will automatically create a Unix domain socket for communication with the macOS app.
-
-### Frontend Setup
-
-1. Open `karen.xcodeproj` in Xcode
-2. Build and run the project (Cmd+R)
-
 ## Usage Guide
 
 ### Getting Started
